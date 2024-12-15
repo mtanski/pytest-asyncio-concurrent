@@ -13,7 +13,7 @@ def test_groups_run_in_different_loop(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_A():
                 await asyncio.sleep(3)
-                assert 1 == 2
+                assert 1 == 1
 
             @pytest.mark.asyncio_concurrent(group="B")
             async def test_group_B():
