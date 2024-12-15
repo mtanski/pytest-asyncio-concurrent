@@ -64,7 +64,7 @@ def group_asyncio_concurrent_function(group_name:str, children: List[Function]):
         
     fixtureInfo = FuncFixtureInfo(tuple(argnames), tuple(initialnames), list(names_closure), name2fixturedefs)
     
-    def wrap_children_into_single_callobj() -> Callable[[...], None]: # type: ignore
+    def wrap_children_into_single_callobj() -> Callable[..., None]:
         def inner(*args, **kwargs) -> None:
             coros: List[Coroutine] = []
             loop = asyncio.get_event_loop()
