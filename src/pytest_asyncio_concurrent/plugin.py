@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from typing import  Any, Callable, List, Optional, Sequence, Coroutine, Set, Dict
 import uuid
 
@@ -45,11 +46,16 @@ def pytest_collection_modifyitems_sort_by_group(
         items.append(group_asyncio_concurrent_function(group_name, asyncio_items))
 
 def group_asyncio_concurrent_function(group_name:str, children: List[Function]):
+    # print(f"group_name {group_name}", file=sys.stderr)
     parent = None
     for childFunc in children:
+        p_it = childFunc.iter_parents()
+        next(p_it)
+        func_parent = next(p_it)
+                
         if not parent:
-            parent = next(childFunc.iter_parents())
-        elif parent is not next(childFunc.iter_parents()):
+            parent = func_parent
+        elif parent is not func_parent:
             raise Exception("test case within same group should have same parent.")
     
     argnames: Set[str] = set()
