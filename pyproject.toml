@@ -45,3 +45,6 @@ asyncio-concurrent = "pytest_asyncio_concurrent.plugin"
 test = [
     "coverage>=7.6.0",
 ]
+
+[tools.black]
+line-length = 79

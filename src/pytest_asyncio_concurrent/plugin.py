@@ -112,7 +112,9 @@ def pytest_runtest_setup_group_children(item: Item) -> None:
 
 
 @pytest.hookimpl(specname="pytest_runtest_teardown", tryfirst=True)
-def pytest_runtest_teardown_group_children(item: Item, nextitem: Optional[Item]) -> None:
+def pytest_runtest_teardown_group_children(
+    item: Item, nextitem: Optional[Item]
+) -> None:
     if not hasattr(item, CONCURRENT_CHILDREN):
         return
 
