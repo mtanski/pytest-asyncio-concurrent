@@ -1,6 +1,7 @@
 from textwrap import dedent
 import pytest
 
+
 def test_groups_different(pytester: pytest.Pytester):
     """Make sure group with different group exceuted seperately."""
 
@@ -24,9 +25,10 @@ def test_groups_different(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest_subprocess()
-    
+
     assert result.duration >= 5
     result.assert_outcomes(passed=2)
+
 
 def test_groups_anonymous(pytester: pytest.Pytester):
     """Make sure tests without group specified treated as different group"""
@@ -51,7 +53,7 @@ def test_groups_anonymous(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest_subprocess()
-    
+
     assert result.duration >= 5
     result.assert_outcomes(passed=2)
 
@@ -79,9 +81,9 @@ def test_groups_same(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest_subprocess()
-    
+
     assert result.duration <= 5
-    result.assert_outcomes(passed=1) # TODO: passed should be 2
+    result.assert_outcomes(passed=1)  # TODO: passed should be 2
 
 
 def test_parametrize_without_group(pytester: pytest.Pytester):
@@ -103,11 +105,11 @@ def test_parametrize_without_group(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest_subprocess()
-    
+
     assert result.duration >= 9
     result.assert_outcomes(passed=3)
-    
-    
+
+
 def test_parametrize_with_group(pytester: pytest.Pytester):
     """Make sure parametrized tests with group specified executed together"""
 
@@ -127,6 +129,6 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest_subprocess()
-    
+
     assert result.duration <= 6
     result.assert_outcomes(passed=1)

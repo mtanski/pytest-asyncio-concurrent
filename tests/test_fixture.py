@@ -9,7 +9,7 @@
 #             """\
 #             import asyncio
 #             import pytest
-            
+
 #             @pytest.mark.asyncio_concurrent(group="A")
 #             async def test_group_A():
 #                 await asyncio.sleep(3)
@@ -24,6 +24,6 @@
 #     )
 
 #     result = pytester.runpytest_subprocess()
-    
+
 #     assert result.duration >= 5
 #     result.assert_outcomes(passed=2)
