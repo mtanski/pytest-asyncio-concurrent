@@ -1,4 +1,4 @@
-.PHONY: clean clean-build clean-pyc clean-test lint test
+.PHONY: clean clean-build clean-pyc clean-test fix-lint
 
 clean: clean-build clean-pyc clean-test ## remove all build, test, coverage and Python artifacts
 
@@ -20,5 +20,5 @@ clean-test: ## remove test and coverage artifacts
 	rm -fr coverage/
 	rm -fr htmlcov/
 
-test: .venv
-	coverage run -m pytest
+fix-lint: ## fix-lint
+	python -m black .
