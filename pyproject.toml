@@ -46,5 +46,8 @@ test = [
     "coverage>=7.6.0",
 ]
 
-[tools.black]
-line-length = 79
+[tool.black]
+line-length = 100
+
+[tool.flake8]
+max-line-length = 100
