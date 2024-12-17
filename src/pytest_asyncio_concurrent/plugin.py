@@ -70,7 +70,7 @@ def group_asyncio_concurrent_function(group_name: str, children: List[Function])
     return g_function
 
 
-def wrap_children_into_single_callobj(children: list[Function]) -> Callable[[], None]:
+def wrap_children_into_single_callobj(children: List[Function]) -> Callable[[], None]:
     def inner() -> None:
         coros: List[Coroutine] = []
         loop = asyncio.get_event_loop()
@@ -112,7 +112,7 @@ def pytest_runtest_setup_group_children(item: Item) -> None:
 
 
 @pytest.hookimpl(specname="pytest_runtest_teardown", tryfirst=True)
-def pytest_runtest_teardown_group_children(item: Item, nextitem: Item | None) -> None:
+def pytest_runtest_teardown_group_children(item: Item, nextitem: Optional[Item]) -> None:
     if not hasattr(item, CONCURRENT_CHILDREN):
         return
 
