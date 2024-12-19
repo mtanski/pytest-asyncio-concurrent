@@ -76,7 +76,12 @@ def test_fixture_scopes(pytester: pytest.Pytester):
             import pytest
 
             @pytest.mark.asyncio_concurrent
-            async def test_fixture_multi(fixture_function, fixture_class, fixture_module, fixture_session):
+            async def test_fixture_multi(
+                fixture_function,
+                fixture_class,
+                fixture_module,
+                fixture_session
+            ):
                 await asyncio.sleep(1)
                 assert fixture_function == "fixture_function"
                 assert fixture_class == "fixture_class"
@@ -120,10 +125,10 @@ def test_fixture_teardown(pytester: pytest.Pytester):
             @pytest.mark.parametrize("p", [1, 2, 3])
             async def test_fixture_multi(fixture_function, fixture_module, p):
                 await asyncio.sleep(p)
-                
+
                 fixture_module.append(p)
                 fixture_function.append(p)
-                
+
                 assert len(fixture_function) == 1
                 assert len(fixture_module) == p
             """
@@ -140,10 +145,10 @@ def test_fixture_teardown(pytester: pytest.Pytester):
             @pytest.mark.parametrize("p", [1, 2, 3])
             async def test_fixture_multi(fixture_function, fixture_module, p):
                 await asyncio.sleep(p)
-                
+
                 fixture_module.append(p)
                 fixture_function.append(p)
-                
+
                 assert len(fixture_function) == 1
                 assert len(fixture_module) == p
             """

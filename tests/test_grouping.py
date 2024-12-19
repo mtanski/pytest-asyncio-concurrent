@@ -94,9 +94,9 @@ def test_parametrize_without_group(pytester: pytest.Pytester):
             """\
             import asyncio
             import pytest
-            
+
             g = 0
-            
+
             @pytest.mark.parametrize("p", [0, 1, 2])
             @pytest.mark.asyncio_concurrent
             async def test_parametrize_no_group(p):
