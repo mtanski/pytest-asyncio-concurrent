@@ -1,10 +1,13 @@
 import asyncio
 import sys
-from typing import Callable, List, Optional, Coroutine, Dict, cast
+from typing import Callable, Generator, List, Optional, Coroutine, Dict, cast
 import uuid
 
 import pytest
+from _pytest.scope import Scope
+from _pytest.fixtures import FixtureValue, SubRequest
 from pytest import (
+    FixtureDef,
     Item,
     Session,
     Config,
@@ -72,14 +75,16 @@ def group_asyncio_concurrent_function(group_name: str, children: List[Function])
 
 
 def wrap_children_into_single_callobj(children: List[Function]) -> Callable[[], None]:
+    for childfunc in children:
+        _rewrite_function_scoped_fixture(childfunc)
+
     def inner() -> None:
         coros: List[Coroutine] = []
         loop = asyncio.get_event_loop()
 
         for childFunc in children:
             testfunction = childFunc.obj
-            funcargs = childFunc.funcargs
-            testargs = {arg: funcargs[arg] for arg in childFunc._fixtureinfo.argnames}
+            testargs = {arg: childFunc.funcargs[arg] for arg in childFunc._fixtureinfo.argnames}
             coro = testfunction(**testargs)
             coros.append(coro)
 
@@ -88,13 +93,26 @@ def wrap_children_into_single_callobj(children: List[Function]) -> Callable[[], 
     return inner
 
 
-# @pytest.hookimpl(tryfirst=True)
-# def pytest_fixture_setup(
-#     fixturedef: FixtureDef[object], request: SubRequest
-# ) -> Generator[None, object, object]:
-#     print(fixturedef, file=sys.stderr)
-#     print(request, file=sys.stderr)
-#     return (yield)
+def _rewrite_function_scoped_fixture(item: Function):
+    for name, fixturedefs in item._request._arg2fixturedefs.items():
+        if hasattr(item, "callspec") and name in item.callspec.params.keys():
+            continue
+
+        if fixturedefs[-1]._scope != Scope.Function:
+            continue
+
+        new_fixdef = FixtureDef(
+            config=item.config,
+            baseid=fixturedefs[-1].baseid,
+            argname=fixturedefs[-1].argname,
+            func=fixturedefs[-1].func,
+            scope=fixturedefs[-1]._scope,
+            params=fixturedefs[-1].params,
+            ids=fixturedefs[-1].ids,
+            _ispytest=True,
+        )
+        fixturedefs = list(fixturedefs[0:-1]) + [new_fixdef]
+        item._request._arg2fixturedefs[name] = fixturedefs
 
 
 @pytest.hookimpl(specname="pytest_runtest_setup", trylast=True)
@@ -103,9 +121,10 @@ def pytest_runtest_setup_group_children(item: Item) -> None:
         return
 
     try:
-        for child in cast(List[Item], getattr(item, CONCURRENT_CHILDREN)):
+        for child in cast(List[Function], getattr(item, CONCURRENT_CHILDREN)):
             item.session._setupstate.stack[child] = ([child.teardown], None)
             child.setup()
+
     except Exception as ex:
         raise Exception(f"Error when setting up {item.name}") from ex
 
@@ -117,7 +136,6 @@ def pytest_runtest_teardown_group_children(item: Item, nextitem: Optional[Item])
     if not hasattr(item, CONCURRENT_CHILDREN):
         return
 
-    print(item.session._setupstate.stack, file=sys.stderr)
     exceptions: List[BaseException] = []
     for child in cast(List[Item], getattr(item, CONCURRENT_CHILDREN)):
         finalizers, _ = item.session._setupstate.stack.pop(child)
