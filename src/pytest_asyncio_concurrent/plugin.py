@@ -26,9 +26,7 @@ def pytest_configure(config: Config) -> None:
 
 
 @pytest.hookimpl(specname="pytest_runtestloop", wrapper=True)
-def pytest_runtestloop_wrap_items_by_group(
-    session: Session
-) -> Generator[None, Any, Any]:
+def pytest_runtestloop_wrap_items_by_group(session: Session) -> Generator[None, Any, Any]:
     """
     Group items with same asyncio concurrent group together,
     so they can be executed together in outer loop.
@@ -62,11 +60,15 @@ def pytest_runtestloop_wrap_items_by_group(
 
     return result
 
+
 class AsyncioConcurrentGroup(Function):
     _pytest_asyncio_concurrent_children: List[Function] = []
     _pytest_asyncio_concurrent_children_call_report: List[TestReport] = []
 
-def group_asyncio_concurrent_function(group_name: str, children: List[Function]) -> AsyncioConcurrentGroup:
+
+def group_asyncio_concurrent_function(
+    group_name: str, children: List[Function]
+) -> AsyncioConcurrentGroup:
     parent = None
     for childFunc in children:
         p_it = childFunc.iter_parents()
@@ -77,7 +79,7 @@ def group_asyncio_concurrent_function(group_name: str, children: List[Function])
             parent = func_parent
         elif parent is not func_parent:
             raise Exception("test case within same group should have same parent.")
-        
+
         _rewrite_function_scoped_fixture(childFunc)
 
     g_function = AsyncioConcurrentGroup.from_parent(
@@ -115,18 +117,17 @@ def _rewrite_function_scoped_fixture(item: Function):
 ############################################################################ function call & setup & teardown ############################################################################
 
 
-
 @pytest.hookimpl(specname="pytest_runtest_setup", wrapper=True)
 def pytest_runtest_setup_group_children(item: Item) -> Generator[None, None, None]:
     result = yield
-    
-    if not isinstance(item , AsyncioConcurrentGroup):
+
+    if not isinstance(item, AsyncioConcurrentGroup):
         return result
 
     for childFunc in item._pytest_asyncio_concurrent_children:
         call = CallInfo.from_call(_pytest_simple_setup(childFunc), "setup")
-        report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)        
-        childFunc.ihook.pytest_runtest_logreport(report=report)  
+        report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
+        childFunc.ihook.pytest_runtest_logreport(report=report)
 
     return result
 
@@ -135,15 +136,15 @@ def _pytest_simple_setup(item: Item) -> Callable[[], None]:
     def inner() -> None:
         item.session._setupstate.stack[item] = ([item.teardown], None)
         item.setup()
-    
+
     return inner
 
 
 @pytest.hookimpl(specname="pytest_pyfunc_call", tryfirst=True)
 def pytest_pyfunc_call_handle_group(pyfuncitem: Function) -> Any:
-    if not isinstance(pyfuncitem , AsyncioConcurrentGroup):
+    if not isinstance(pyfuncitem, AsyncioConcurrentGroup):
         return None
-    
+
     coros: List[Coroutine] = []
     loop = asyncio.get_event_loop()
 
@@ -151,7 +152,7 @@ def pytest_pyfunc_call_handle_group(pyfuncitem: Function) -> Any:
         coros.append(_async_callinfo_from_call(_pytest_function_call_async(childFunc)))
 
     result = loop.run_until_complete(asyncio.gather(*coros))
-    
+
     for childFunc, call in zip(pyfuncitem._pytest_asyncio_concurrent_children, result):
         report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
         pyfuncitem._pytest_asyncio_concurrent_children_call_report.append(report)
@@ -180,7 +181,7 @@ async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> CallInfo:
         if isinstance(excinfo.value, outcomes.Exit):
             raise
         result = None
-    
+
     precise_stop = timing.perf_counter()
     duration = precise_stop - precise_start
     stop = timing.time()
@@ -194,13 +195,15 @@ async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> CallInfo:
         excinfo=excinfo,
         _ispytest=True,
     )
-    
+
     return callInfo
 
 
 @pytest.hookimpl(specname="pytest_runtest_teardown", wrapper=True)
-def pytest_runtest_teardown_group_children(item: Item, nextitem: Optional[Item]) -> Generator[None, None, None]:    
-    if not isinstance(item , AsyncioConcurrentGroup):
+def pytest_runtest_teardown_group_children(
+    item: Item, nextitem: Optional[Item]
+) -> Generator[None, None, None]:
+    if not isinstance(item, AsyncioConcurrentGroup):
         return (yield)
 
     for childFunc in item._pytest_asyncio_concurrent_children:
@@ -209,6 +212,7 @@ def pytest_runtest_teardown_group_children(item: Item, nextitem: Optional[Item])
         childFunc.ihook.pytest_runtest_logreport(report=report)
 
     return (yield)
+
 
 def _pytest_simple_teardown(item: Item) -> Callable[[], None]:
     def inner() -> None:
@@ -226,29 +230,39 @@ def _pytest_simple_teardown(item: Item) -> Callable[[], None]:
         elif these_exceptions:
             msg = f"Errors during tearing down {item}"
             raise BaseExceptionGroup(msg, these_exceptions[::-1])
-    
+
     return inner
+
 
 ############################################################################ reporting ############################################################################
 
+
 @pytest.hookimpl(specname="pytest_runtest_protocol", tryfirst=True)
-def pytest_runtest_protocol_skip_logging_for_group(item: Item, nextitem: Optional[Item]) -> Optional[bool]:
-    if not isinstance(item , AsyncioConcurrentGroup):
+def pytest_runtest_protocol_skip_logging_for_group(
+    item: Item, nextitem: Optional[Item]
+) -> Optional[bool]:
+    if not isinstance(item, AsyncioConcurrentGroup):
         return None
-    
+
     # More testing required here, tests being reported twice on terminal if running in verbose mode.
     for childFunc in item._pytest_asyncio_concurrent_children:
-        childFunc.ihook.pytest_runtest_logstart(nodeid=childFunc.nodeid, location=childFunc.location)
+        childFunc.ihook.pytest_runtest_logstart(
+            nodeid=childFunc.nodeid, location=childFunc.location
+        )
 
-    runner.runtestprotocol(item, nextitem=nextitem, log=False)  # this is the only difference from the orignal hook.
+    runner.runtestprotocol(
+        item, nextitem=nextitem, log=False
+    )  # this is the only difference from the orignal hook.
     for childReport in item._pytest_asyncio_concurrent_children_call_report:
         item.ihook.pytest_runtest_logreport(report=childReport)
-    
+
     for childFunc in item._pytest_asyncio_concurrent_children:
-        childFunc.ihook.pytest_runtest_logfinish(nodeid=childFunc.nodeid, location=childFunc.location)
+        childFunc.ihook.pytest_runtest_logfinish(
+            nodeid=childFunc.nodeid, location=childFunc.location
+        )
 
     return True
-    
+
 
 def _get_asyncio_concurrent_mark(item: Item) -> Optional[Mark]:
     return item.get_closest_marker("asyncio_concurrent")
