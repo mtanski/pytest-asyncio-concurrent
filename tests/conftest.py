@@ -1,6 +1,3 @@
-# import asyncio
-# from typing import Generator
-
 # import pytest
 
 pytest_plugins = ["pytester"]
