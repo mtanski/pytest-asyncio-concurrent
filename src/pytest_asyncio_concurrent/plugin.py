@@ -4,7 +4,7 @@ from typing import Any, Callable, List, Optional, Coroutine, Dict, cast
 import uuid
 
 import pytest
-from _pytest import scope, timing, outcomes
+from _pytest import scope, timing, outcomes, runner
 # from _pytest.fixtures import FixtureValue, SubRequest
 from pytest import (
     CallInfo,
@@ -223,11 +223,13 @@ def _pytest_simple_teardown(item: Item) -> Callable[[], None]:
 
 ############################################################################ reporting ############################################################################
 
-# @pytest.hookimpl(specname="pytest_runtest_logreport", )
-# def pytest_runtest_logreport_skip_group(report: TestReport) -> None:
-    # if not isinstance(item , AsyncioConcurrentGroup):
-    #     return
-    # report.
+@pytest.hookimpl(specname="pytest_runtest_protocol", tryfirst=True)
+def pytest_runtest_protocol_skip_logging_for_group(item: Item, nextitem: Optional[Item]) -> Optional[bool]:
+    if not isinstance(item , AsyncioConcurrentGroup):
+        return None
+    
+    runner.runtestprotocol(item, nextitem=nextitem, log=False)  # this is the only difference from the orignal hook.
+    return True
     
 
 def _get_asyncio_concurrent_mark(item: Item) -> Optional[Mark]:
