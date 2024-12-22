@@ -46,7 +46,7 @@ def pytest_runtestloop_wrap_items_by_group(session: Session) -> Generator[None, 
     for asyncio_items in asycio_concurrent_groups.values():
         for item in asyncio_items:
             items.remove(item)
-    
+
     for group_name, asyncio_items in asycio_concurrent_groups.items():
         items.append(group_asyncio_concurrent_function(group_name, asyncio_items))
 
@@ -249,9 +249,7 @@ def pytest_runtest_protocol_skip_logging_for_group(
             nodeid=childFunc.nodeid, location=childFunc.location
         )
 
-    runner.runtestprotocol(
-        item, nextitem=nextitem, log=False
-    )  # disable logging for group function
+    runner.runtestprotocol(item, nextitem=nextitem, log=False)  # disable logging for group function
 
     for childFunc in item._pytest_asyncio_concurrent_children:
         childFunc.ihook.pytest_runtest_logfinish(
