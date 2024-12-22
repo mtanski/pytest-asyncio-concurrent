@@ -13,12 +13,12 @@ def test_groups_different(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_A():
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
                 assert 1 == 1
 
             @pytest.mark.asyncio_concurrent(group="B")
             async def test_group_B():
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 assert 1 == 1
             """
         )
@@ -26,7 +26,7 @@ def test_groups_different(pytester: pytest.Pytester):
 
     result = pytester.runpytest_subprocess()
 
-    assert result.duration >= 5
+    assert result.duration >= 3
     result.assert_outcomes(passed=2)
 
 
@@ -41,12 +41,12 @@ def test_groups_anonymous(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent
             async def test_group_A():
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
                 assert 1 == 1
 
             @pytest.mark.asyncio_concurrent
             async def test_group_B():
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 assert 1 == 1
             """
         )
@@ -54,7 +54,7 @@ def test_groups_anonymous(pytester: pytest.Pytester):
 
     result = pytester.runpytest_subprocess()
 
-    assert result.duration >= 5
+    assert result.duration >= 3
     result.assert_outcomes(passed=2)
 
 
@@ -69,12 +69,12 @@ def test_groups_same(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_anonymous_A():
-                await asyncio.sleep(3)
+                await asyncio.sleep(2)
                 assert 1 == 1
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_anonymous_B():
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 assert 1 == 1
             """
         )
@@ -82,7 +82,7 @@ def test_groups_same(pytester: pytest.Pytester):
 
     result = pytester.runpytest_subprocess()
 
-    assert result.duration < 5
+    assert result.duration < 3
     result.assert_outcomes(passed=2)
 
 
