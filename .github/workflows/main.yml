@@ -8,21 +8,81 @@ on:
     branches:
       - main
 
+env:
+  PYTHON_LATEST: 3.13
+
 jobs:
+  lint:
+    name Linting
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_LATEST }}
+    - name: Install tox
+      run: pip install tox
+    - name: Run tox lint target
+      run: python -m tox -e flake8
+
+
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} - Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}-latest
+
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', 'pypy-3.8']
+        os: [ubuntu, windows]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+    
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: Install tox
-        run: pip install tox
+        run: pip install tox tox-gh-actions coverage[toml]
+      - name: Run tox targets for ${{ matrix.python-version }}
+        run: python -m tox
 
-      - name: Test
-        run: tox -e py
+      - name: Store coverage data
+        uses: actions/upload-artifact@v4
+        if: "!endsWith(matrix.os, 'windows')"
+        with:
+          name: coverage-python-${{ matrix.python-version }}
+          path: coverage/coverage.*
+          if-no-files-found: error
+  
+  coverage:
+    name: Coverage
+    if: always()
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Decide whether the needed jobs succeeded or failed
+      uses: re-actors/alls-green@release/v1
+      with:
+        jobs: ${{ toJSON(needs) }}
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_LATEST }}
+    - name: Install Coverage.py
+      run: |
+        set -xe
+        python -m pip install --upgrade coverage[toml]
+    - name: Download coverage data for all test runs
+      uses: actions/download-artifact@v4
+      with:
+        pattern: coverage-*
+        path: coverage
+        merge-multiple: true
+    - name: Combine coverage data and create report
+      run: |
+        coverage combine
+        coverage xml
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v5
+      with:
+        files: coverage.xml
+        fail_ci_if_error: true
+        token: ${{ secrets.CODECOV_TOKEN }}
