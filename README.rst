@@ -10,6 +10,9 @@ pytest-asyncio-concurrent
     :target: https://pypi.org/project/pytest-asyncio-concurrent
     :alt: Python versions
 
+.. image:: https://codecov.io/gh/czl9707/pytest-asyncio-concurrent/branch/main/graph/badge.svg
+    :target: https://codecov.io/gh/czl9707/pytest-asyncio-concurrent
+
 .. image:: https://github.com/czl9707/pytest-asyncio-concurrent/actions/workflows/main.yml/badge.svg
     :target: https://github.com/czl9707/pytest-asyncio-concurrent/actions/workflows/main.yml
     :alt: See Build Status on GitHub Actions
