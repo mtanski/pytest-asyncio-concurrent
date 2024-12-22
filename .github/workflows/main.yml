@@ -13,7 +13,7 @@ env:
 
 jobs:
   lint:
-    name Linting
+    name: Linting
   steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -68,7 +68,6 @@ jobs:
         python-version: ${{ env.PYTHON_LATEST }}
     - name: Install Coverage.py
       run: |
-        set -xe
         python -m pip install --upgrade coverage[toml]
     - name: Download coverage data for all test runs
       uses: actions/download-artifact@v4
