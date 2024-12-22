@@ -24,7 +24,7 @@ def test_groups_different(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess()
+    result = pytester.runpytest()
 
     assert result.duration >= 3
     result.assert_outcomes(passed=2)
@@ -52,7 +52,7 @@ def test_groups_anonymous(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess()
+    result = pytester.runpytest()
 
     assert result.duration >= 3
     result.assert_outcomes(passed=2)
@@ -80,7 +80,7 @@ def test_groups_same(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess()
+    result = pytester.runpytest()
 
     assert result.duration < 3
     result.assert_outcomes(passed=2)
@@ -109,7 +109,7 @@ def test_parametrize_without_group(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess()
+    result = pytester.runpytest()
 
     result.assert_outcomes(passed=3)
     assert result.duration >= 3
@@ -138,7 +138,7 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess()
+    result = pytester.runpytest()
 
     result.assert_outcomes(passed=3)
     assert result.duration < 3

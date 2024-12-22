@@ -39,8 +39,10 @@ dependencies = [
 ]
 [project.urls]
 Repository = "https://github.com/czl9707/pytest-asyncio-concurrent"
+
 [project.entry-points.pytest11]
 asyncio-concurrent = "pytest_asyncio_concurrent.plugin"
+
 [project.optional-dependencies]
 test = [
     "coverage>=7.6.0",
@@ -62,6 +64,9 @@ omit = [
   "*/_version.py",
 ]
 parallel = true
+concurrency = [ 
+    "multiprocessing"
+]
 
 [tool.coverage.report]
 show_missing = true
