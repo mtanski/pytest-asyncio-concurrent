@@ -80,7 +80,7 @@ jobs:
     - name: Combine coverage data and create report
       run: |
         coverage combine
-        coverage xml
+        coverage xml -i
     - name: Upload coverage report
       uses: codecov/codecov-action@v5
       with:
