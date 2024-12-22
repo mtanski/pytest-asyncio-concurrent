@@ -17,24 +17,20 @@ pytest-asyncio-concurrent
     :target: https://github.com/czl9707/pytest-asyncio-concurrent/actions/workflows/main.yml
     :alt: See Build Status on GitHub Actions
 
-`pytest-asyncio-concurrent`_ is an addon of `pytest-asyncio`_. While `pytest-asyncio`_ run async test synchronously, while this plugin execute python async tests concurrently
 
-----
+``pytest-asyncio-concurrent``_ A pytest plugin for running asynchronous tests in true parallel, enabling faster execution for async-heavy test suites. 
+Unlike ``pytest-asyncio``, which runs async tests **sequentially**, ``pytest-asyncio-concurrent`` takes advantage of Python's asyncio capabilities to execute tests **concurrently** by specifying **async group**, making it an ideal choice for applications with high I/O or network-bound workloads.
 
-This `pytest`_ plugin was generated with `Cookiecutter`_ along with `@hackebrot`_'s `cookiecutter-pytest-plugin`_ template.
+Note: This plugin would more or less `Break Test Isolation Principle` \(for none function scoped fixture\). Please make sure your tests is ok to run concurrently before you use this plugin.
 
-
-Features
+Key Features
 --------
 
-* TODO
-
-
-Requirements
-------------
-
-* TODO
-
+- Giving the capability to run pytest async functions.
+- Providing granular control over Concurrency
+ - Specifying Async Group to control tests that can run together. 
+ - Specifying Timeout to avoid async tests taking forever. (Under Construction)
+- Compatible with ``pytest-asyncio``.
 
 Installation
 ------------
@@ -47,10 +43,40 @@ You can install "pytest-asyncio-concurrent" via `pip`_ from `PyPI`_::
 Usage
 -----
 
-* TODO
+Run test Sequentially
+.. code-block:: python
+    @pytest.mark.asyncio_concurrent
+    async def test_some_asyncio_code_A():
+        res = await wait_for_something_async()
+        assert result.is_valid()
+
+    @pytest.mark.asyncio_concurrent
+    async def test_some_asyncio_code_B():
+        res = await wait_for_something_async()
+        assert result.is_valid()
+
+
+Run tests Concurrently
+.. code-block:: python
+    @pytest.mark.asyncio_concurrent
+    async def test_some_asyncio_code_by_itself():
+        res = await wait_for_something_async()
+        assert result.is_valid()
+
+    @pytest.mark.asyncio_concurrent(group="my_group")
+    async def test_some_asyncio_code_groupA():
+        res = await wait_for_something_async()
+        assert result.is_valid()
+
+    @pytest.mark.asyncio_concurrent(group="my_group")
+    async def test_some_asyncio_code_groupB():
+        res = await wait_for_something_async()
+        assert result.is_valid()
+
 
 Contributing
 ------------
+
 Contributions are very welcome. Tests can be run with `tox`_, please ensure
 the coverage at least stays the same before you submit a pull request.
 
@@ -58,22 +84,3 @@ License
 -------
 
 Distributed under the terms of the `MIT`_ license, "pytest-asyncio-concurrent" is free and open source software
-
-
-Issues
-------
-
-If you encounter any problems, please `file an issue`_ along with a detailed description.
-
-.. _`Cookiecutter`: https://github.com/audreyr/cookiecutter
-.. _`@hackebrot`: https://github.com/hackebrot
-.. _`MIT`: https://opensource.org/licenses/MIT
-.. _`BSD-3`: https://opensource.org/licenses/BSD-3-Clause
-.. _`GNU GPL v3.0`: https://www.gnu.org/licenses/gpl-3.0.txt
-.. _`Apache Software License 2.0`: https://www.apache.org/licenses/LICENSE-2.0
-.. _`cookiecutter-pytest-plugin`: https://github.com/pytest-dev/cookiecutter-pytest-plugin
-.. _`file an issue`: https://github.com/czl9707/pytest-asyncio-concurrent/issues
-.. _`pytest`: https://github.com/pytest-dev/pytest
-.. _`tox`: https://tox.readthedocs.io/en/latest/
-.. _`pip`: https://pypi.org/project/pip/
-.. _`PyPI`: https://pypi.org/project
