@@ -10,7 +10,7 @@ pytest-asyncio-concurrent
     :target: https://pypi.org/project/pytest-asyncio-concurrent
     :alt: Python versions
 
-.. image:: .. image:: https://codecov.io/github/czl9707/pytest-asyncio-concurrent/graph/badge.svg?token=ENWHQBWQML 
+.. image:: https://codecov.io/github/czl9707/pytest-asyncio-concurrent/graph/badge.svg?token=ENWHQBWQML 
     :target: https://codecov.io/gh/czl9707/pytest-asyncio-concurrent
     :alt: Testing Coverage
 

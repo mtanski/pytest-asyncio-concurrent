@@ -1,0 +1,62 @@
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Release Type"
+        required: true
+        type: choice
+        default: "patch"
+        options:
+        - major
+        - minor
+        - patch
+        - pre
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    needs: [lint, test, coverage]
+
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_LATEST }}
+
+      - name: Install pip dependencies
+        run: pip install build twine
+
+      - name: Bump version
+        if: github.event_name == 'push'
+        id: bump
+        uses: callowayproject/bump-my-version@master
+        env:
+          BUMPVERSION_TAG: "true"
+        with:
+          args: ${{ inputs.release_type }}
+          github-token: ${{ secrets.GH_TOKEN }}
+
+      - name: Build package
+        run: python -m build
+      - name: Distribution Collected
+        run: tree dist
+
+      - name: PyPI upload
+        if: github.event_name == 'push'
+        uses: pypa/gh-action-pypi-publish@v1.12.3
+        with:
+          attestations: true
+          password: ${{ secrets.PYPI_API_TOKEN }}
+        continue-on-error: false
+      - name: GitHub Release
+        if: github.event_name == 'push'
+        uses: ncipollo/release-action@v1
+        with:
+          name: pytest-asyncio-concurrent ${{ steps.bump.outputs.current-version }}
+          artifacts: dist/*
+          bodyFile: README.md
+          prerelease: ${{ steps.bump.outputs.current-version }}
+          token: ${{ secrets.GH_TOKEN }}
+
