@@ -37,7 +37,7 @@ def test_fixture_handling(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess()
+    result = pytester.runpytest()
 
     result.assert_outcomes(passed=1)
 
@@ -91,7 +91,7 @@ def test_fixture_scopes(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess()
+    result = pytester.runpytest()
 
     result.assert_outcomes(passed=1)
 
@@ -155,6 +155,6 @@ def test_fixture_teardown(pytester: pytest.Pytester):
         )
     )
 
-    result = pytester.runpytest_subprocess("testA.py", "testB.py")
+    result = pytester.runpytest("testA.py", "testB.py")
 
     result.assert_outcomes(passed=6)
