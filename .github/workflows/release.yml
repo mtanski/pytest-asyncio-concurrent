@@ -29,7 +29,7 @@ jobs:
           python-version: ${{ env.PYTHON_LATEST }}
 
       - name: Install pip dependencies
-        run: python -m pip install build twine
+        run: python${{ env.PYTHON_LATEST }} -m pip install build twine
 
       - name: Bump version
         id: bump
@@ -41,7 +41,7 @@ jobs:
           github-token: ${{ secrets.GH_TOKEN }}
 
       - name: Build package
-        run: python -m build
+        run: python${{ env.PYTHON_LATEST }} -m build
       - name: Distribution Collected
         run: tree dist
 
