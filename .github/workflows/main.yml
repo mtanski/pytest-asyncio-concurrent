@@ -115,7 +115,7 @@ jobs:
           BUMPVERSION_TAG: "true"
         with:
           args: patch
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GH_TOKEN }}
 
       - name: PyPI upload
         if: github.event_name == 'push'
@@ -132,4 +132,4 @@ jobs:
           artifacts: dist/*
           bodyFile: README.md
           prerelease: ${{ steps.bump.outputs.current-version }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
