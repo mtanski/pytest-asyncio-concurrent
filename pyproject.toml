@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-  "setuptools>=61.0.0",
+  "setuptools>=61.0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -36,18 +36,24 @@ classifiers = [
 dependencies = [
     "pytest>=6.2.0",
 ]
+optional-dependencies.testing = [
+    "coverage>=7.6.0",
+]
 [project.urls]
 Repository = "https://github.com/czl9707/pytest-asyncio-concurrent"
 Homepage = "https://github.com/czl9707/pytest-asyncio-concurrent"
 Issues = "https://github.com/czl9707/pytest-asyncio-concurrent/issues"
 
-
 [project.entry-points.pytest11]
 asyncio-concurrent = "pytest_asyncio_concurrent.plugin"
 
-[project.optional-dependencies]
-test = [
-    "coverage>=7.6.0",
+[tool.setuptools]
+packages = [
+  "pytest_asyncio_concurrent",
+]
+include-package-data = true
+license-files = [
+  "LICENSE",
 ]
 
 [tool.black]
@@ -93,3 +99,4 @@ commit_args = ""
 setup_hooks = []
 pre_commit_hooks = []
 post_commit_hooks = []
+

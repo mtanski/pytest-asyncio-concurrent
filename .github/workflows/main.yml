@@ -101,15 +101,11 @@ jobs:
 
       - name: Install pip dependencies
         run: pip install build twine
-      - name: Install dependencies
-        run: sudo apt-get install -y pandoc
 
       - name: Build package
         run: python -m build
       - name: Distribution Collected
         run: tree dist
-      - name: Convert README.rst to Markdown
-        run: pandoc -s -o README.md README.rst
 
       - name: Bump version
         if: github.event_name == 'push'
