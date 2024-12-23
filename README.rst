@@ -19,14 +19,15 @@ pytest-asyncio-concurrent
     :alt: See Build Status on GitHub Actions
 
 
-------------
 
+System/Integration tests can take a really long time. 
 
-``pytest-asyncio-concurrent`` A pytest plugin for running asynchronous tests in true parallel, enabling faster execution for async-heavy test suites. 
+And ``pytest-asyncio-concurrent`` A pytest plugin is a solution for this by running asynchronous tests in true parallel, enabling faster execution for high I/O or network-bound test suites. 
 
-Unlike ``pytest-asyncio``, which runs async tests **sequentially**, ``pytest-asyncio-concurrent`` takes advantage of Python's asyncio capabilities to execute tests **concurrently** by specifying **async group**, making it an ideal choice for applications with high I/O or network-bound workloads.
+Unlike ``pytest-asyncio``, which runs async tests **sequentially**, ``pytest-asyncio-concurrent`` takes advantage of Python's asyncio capabilities to execute tests **concurrently** by specifying **async group**.
 
 Note: This plugin would more or less `Break Test Isolation Principle` \(for none function scoped fixture\). Please make sure your tests is ok to run concurrently before you use this plugin.
+
 
 Key Features
 ------------
