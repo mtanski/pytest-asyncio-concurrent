@@ -3,7 +3,7 @@ import pytest
 
 
 def test_fixture_handling(pytester: pytest.Pytester):
-    """Make sure that pytest accepts our fixture."""
+    """Make sure that tests is taking fixture value correctly."""
 
     pytester.makeconftest(
         dedent(
@@ -30,7 +30,6 @@ def test_fixture_handling(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent
             async def test_fixture_multi(fixture_a, fixture_b):
-                await asyncio.sleep(1)
                 assert fixture_a == 1
                 assert fixture_b == 2
             """
@@ -43,7 +42,7 @@ def test_fixture_handling(pytester: pytest.Pytester):
 
 
 def test_fixture_scopes(pytester: pytest.Pytester):
-    """Make sure that pytest accepts our fixture."""
+    """Make sure that tests can take fixture of different scops."""
 
     pytester.makeconftest(
         dedent(
@@ -82,7 +81,6 @@ def test_fixture_scopes(pytester: pytest.Pytester):
                 fixture_module,
                 fixture_session
             ):
-                await asyncio.sleep(1)
                 assert fixture_function == "fixture_function"
                 assert fixture_class == "fixture_class"
                 assert fixture_module == "fixture_module"
@@ -92,12 +90,11 @@ def test_fixture_scopes(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest()
-
     result.assert_outcomes(passed=1)
 
 
-def test_fixture_teardown(pytester: pytest.Pytester):
-    """Make sure that pytest accepts our fixture."""
+def test_fixture_isolation(pytester: pytest.Pytester):
+    """Make sure that parametrized tests take handle function fixture isolation."""
 
     pytester.makeconftest(
         dedent(
@@ -124,7 +121,7 @@ def test_fixture_teardown(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent(group="any")
             @pytest.mark.parametrize("p", [1, 2, 3])
             async def test_fixture_multi(fixture_function, fixture_module, p):
-                await asyncio.sleep(p)
+                await asyncio.sleep(p / 10)
 
                 fixture_module.append(p)
                 fixture_function.append(p)
@@ -144,7 +141,7 @@ def test_fixture_teardown(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent
             @pytest.mark.parametrize("p", [1, 2, 3])
             async def test_fixture_multi(fixture_function, fixture_module, p):
-                await asyncio.sleep(p)
+                await asyncio.sleep(p / 10)
 
                 fixture_module.append(p)
                 fixture_function.append(p)
@@ -156,5 +153,117 @@ def test_fixture_teardown(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest("testA.py", "testB.py")
-
     result.assert_outcomes(passed=6)
+
+
+def test_fixture_autouse(pytester: pytest.Pytester):
+    """Make sure that tests can take autouse fixture"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            g_var = 0
+
+            @pytest.fixture(autouse=True)
+            def autoused_fixture():
+                global g_var
+                g_var = 1
+                yield
+                g_var = 0
+
+            @pytest.mark.asyncio_concurrent
+            async def test_fixture_dummy():
+                global g_var
+                assert g_var == 1
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)
+    
+    
+def test_fixture_usefixture(pytester: pytest.Pytester):
+    """Make sure that tests can take usefixuture fixture"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            g_var = 0
+
+            @pytest.fixture(autouse=True)
+            def fixture_got_used():
+                global g_var
+                g_var = 1
+                yield
+                g_var = 0
+
+            @pytest.mark.usefixtures("fixture_got_used")
+            class TestDummyClass:
+                @pytest.mark.asyncio_concurrent
+                async def test_fixture_dummy(self):
+                    global g_var
+                    assert g_var == 1
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)
+    
+
+def test_fixture_class_method(pytester: pytest.Pytester):
+    """Make sure that tests can take method fixture defined in class"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            class TestDummyClass:
+                @pytest.fixture(autouse=True)
+                def fixture_method(self):
+                    yield 1
+
+                @pytest.mark.asyncio_concurrent
+                async def test_fixture_dummy(self, fixture_method):
+                    assert fixture_method == 1
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)
+    
+
+def test_fixture_class_static_method(pytester: pytest.Pytester):
+    """Make sure that tests can take method static fixture defined in class"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            class TestDummyClass:
+                @pytest.fixture(autouse=True)
+                @staticmethod
+                def fixture_method():
+                    yield 1
+
+                @pytest.mark.asyncio_concurrent
+                async def test_fixture_dummy(self, fixture_method):
+                    assert fixture_method == 1
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)

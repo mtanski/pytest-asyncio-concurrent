@@ -13,12 +13,12 @@ def test_groups_different(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_A():
-                await asyncio.sleep(2)
+                await asyncio.sleep(0.1)
                 assert 1 == 1
 
             @pytest.mark.asyncio_concurrent(group="B")
             async def test_group_B():
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.2)
                 assert 1 == 1
             """
         )
@@ -26,7 +26,7 @@ def test_groups_different(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
 
-    assert result.duration >= 3
+    assert result.duration >= 0.3
     result.assert_outcomes(passed=2)
 
 
@@ -41,12 +41,12 @@ def test_groups_anonymous(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent
             async def test_group_A():
-                await asyncio.sleep(2)
+                await asyncio.sleep(0.1)
                 assert 1 == 1
 
             @pytest.mark.asyncio_concurrent
             async def test_group_B():
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.2)
                 assert 1 == 1
             """
         )
@@ -54,7 +54,7 @@ def test_groups_anonymous(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
 
-    assert result.duration >= 3
+    assert result.duration >= 0.3
     result.assert_outcomes(passed=2)
 
 
@@ -69,12 +69,12 @@ def test_groups_same(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_anonymous_A():
-                await asyncio.sleep(2)
+                await asyncio.sleep(0.2)
                 assert 1 == 1
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_anonymous_B():
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.1)
                 assert 1 == 1
             """
         )
@@ -82,7 +82,7 @@ def test_groups_same(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
 
-    assert result.duration < 3
+    assert result.duration < 0.3
     result.assert_outcomes(passed=2)
 
 
@@ -95,16 +95,16 @@ def test_parametrize_without_group(pytester: pytest.Pytester):
             import asyncio
             import pytest
 
-            g = 0
+            g_var = 0
 
             @pytest.mark.parametrize("p", [0, 1, 2])
             @pytest.mark.asyncio_concurrent
             async def test_parametrize_no_group(p):
-                global g
-                await asyncio.sleep(p)
+                global g_var
+                await asyncio.sleep(p / 10)
 
-                assert g == p
-                g += 1
+                assert g_var == p
+                g_var += 1
             """
         )
     )
@@ -112,7 +112,7 @@ def test_parametrize_without_group(pytester: pytest.Pytester):
     result = pytester.runpytest()
 
     result.assert_outcomes(passed=3)
-    assert result.duration >= 3
+    assert result.duration >= 0.3
 
 
 def test_parametrize_with_group(pytester: pytest.Pytester):
@@ -124,16 +124,16 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
             import asyncio
             import pytest
 
-            g = 0
+            g_var = 0
 
             @pytest.mark.parametrize("p", [0, 1, 2])
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_parametrize_with_group(p):
-                global g
-                await asyncio.sleep(p)
+                global g_var
+                await asyncio.sleep(p / 10)
 
-                assert g == p
-                g += 1
+                assert g_var == p
+                g_var += 1
             """
         )
     )
@@ -141,4 +141,4 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
     result = pytester.runpytest()
 
     result.assert_outcomes(passed=3)
-    assert result.duration < 3
+    assert result.duration < 0.3
