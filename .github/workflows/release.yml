@@ -55,8 +55,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: pytest-asyncio-concurrent ${{ steps.bump.outputs.current-version }}
+          prerelease: ${{ inputs.release_type }} == 'pre'
+          tag: ${{ steps.bump.outputs.current-version }}
           artifacts: dist/*
-          bodyFile: README.md
-          prerelease: ${{ steps.bump.outputs.current-version }}
           token: ${{ secrets.GH_TOKEN }}
-
