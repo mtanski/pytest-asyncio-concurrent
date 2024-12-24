@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import contextmanager
 import inspect
 from typing import Any, Callable, Generator, List, Optional, Coroutine, Dict, cast
 import uuid
@@ -113,7 +114,7 @@ def group_asyncio_concurrent_function(
         )
         
         for childFunc in children:
-            childFunc.obj = lambda: pytest.skip()
+            childFunc.add_marker(pytest.mark.skip)
 
     g_function = AsyncioConcurrentGroup.from_parent(
         parent,
@@ -157,20 +158,31 @@ def pytest_runtest_setup_group_children(item: Item) -> Generator[None, None, Non
     if not isinstance(item, AsyncioConcurrentGroup):
         return result
 
-    for childFunc in item._pytest_asyncio_concurrent_children:
-        call = CallInfo.from_call(_pytest_simple_setup(childFunc), "setup")
-        report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
-        childFunc.ihook.pytest_runtest_logreport(report=report)
+    with _setupstate_setup_hijacked():
+        for childFunc in item._pytest_asyncio_concurrent_children:
+            call = CallInfo.from_call(
+                lambda: childFunc.ihook.pytest_runtest_setup(item=childFunc), 
+                "setup", reraise=(outcomes.Exit,)
+            )
+            report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
+            childFunc.ihook.pytest_runtest_logreport(report=report)
 
     return result
 
 
-def _pytest_simple_setup(item: Item) -> Callable[[], None]:
-    def inner() -> None:
-        item.session._setupstate.stack[item] = ([item.teardown], None)
-        item.setup()
+def _pytest_setupstate_setup_without_assert(self: runner.SetupState, item: Item) -> None:
+    self.stack[item] = ([item.teardown], None)
+    item.setup()
 
-    return inner
+@contextmanager
+def _setupstate_setup_hijacked() -> Generator[None, None, None]:
+    original = getattr(runner.SetupState, "setup")
+    setattr(runner.SetupState, "setup", _pytest_setupstate_setup_without_assert)
+    
+    yield
+    
+    setattr(runner.SetupState, "setup", original)
+
 
 
 @pytest.hookimpl(specname="pytest_pyfunc_call", wrapper=True)
