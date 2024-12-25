@@ -197,7 +197,7 @@ def test_fixture_usefixture(pytester: pytest.Pytester):
 
             g_var = 0
 
-            @pytest.fixture(autouse=True)
+            @pytest.fixture
             def fixture_got_used():
                 global g_var
                 g_var = 1
@@ -228,7 +228,7 @@ def test_fixture_method(pytester: pytest.Pytester):
             import pytest
 
             class TestDummyClass:
-                @pytest.fixture(autouse=True)
+                @pytest.fixture
                 def fixture_method(self):
                     yield 1
 
@@ -241,3 +241,57 @@ def test_fixture_method(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
+
+
+def test_fixture_staticmethod(pytester: pytest.Pytester):
+    """Make sure that tests can take static method fixture defined in class"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            class TestDummyClass:
+                @staticmethod
+                @pytest.fixture
+                def fixture_method():
+                    yield 1
+
+                @pytest.mark.asyncio_concurrent
+                async def test_fixture_dummy(self, fixture_method):
+                    assert fixture_method == 1
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)
+
+
+def test_parametrized_fixture(pytester: pytest.Pytester):
+    """Make sure that tests can take parametrized fixture"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            g_visited = set()
+
+            @pytest.fixture(params=["something", "something else"])
+            def parametrized_fixture(request):
+                yield request.param
+
+            @pytest.mark.asyncio_concurrent
+            async def test_fixture_dummy(parametrized_fixture):
+                global g_visited
+                assert parametrized_fixture not in g_visited
+                g_visited.add(parametrized_fixture)
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=2)
