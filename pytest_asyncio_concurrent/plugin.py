@@ -27,6 +27,7 @@ class PytestAsyncioConcurrentGroupingException(Exception):
 
 class AsyncioConcurrentGroup(Function):
     _pytest_asyncio_concurrent_children: List[Function] = []
+    _pytest_asyncio_unfailed_children: List[Function] = []
 
 
 class PytestAsyncioConcurrentGroupingWarning(PytestWarning):
@@ -123,6 +124,7 @@ def group_asyncio_concurrent_function(
     )
 
     g_function._pytest_asyncio_concurrent_children = children
+    g_function._pytest_asyncio_unfailed_children = children.copy()
     return g_function
 
 
@@ -153,19 +155,21 @@ def _rewrite_function_scoped_fixture(item: Function):
 
 @pytest.hookimpl(specname="pytest_runtest_setup", wrapper=True)
 def pytest_runtest_setup_group_children(item: Item) -> Generator[None, None, None]:
-    result = yield
-
     if not isinstance(item, AsyncioConcurrentGroup):
-        return result
+        return (yield)
 
+    result = yield
+    
     with _setupstate_setup_hijacked():
-        for childFunc in item._pytest_asyncio_concurrent_children:
-            call = CallInfo.from_call(
-                lambda: childFunc.ihook.pytest_runtest_setup(item=childFunc), 
-                "setup", reraise=(outcomes.Exit,)
-            )
-            report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
-            childFunc.ihook.pytest_runtest_logreport(report=report)
+        reports = [
+            runner.call_and_report(childFunc, "setup")
+            for childFunc in item._pytest_asyncio_concurrent_children
+        ]
+        item._pytest_asyncio_unfailed_children = [
+            childFunc for childFunc, report in zip(
+                item._pytest_asyncio_concurrent_children, reports
+            ) if report.passed
+        ]
 
     return result
 
@@ -173,6 +177,7 @@ def pytest_runtest_setup_group_children(item: Item) -> Generator[None, None, Non
 def _pytest_setupstate_setup_without_assert(self: runner.SetupState, item: Item) -> None:
     self.stack[item] = ([item.teardown], None)
     item.setup()
+
 
 @contextmanager
 def _setupstate_setup_hijacked() -> Generator[None, None, None]:
@@ -194,12 +199,12 @@ def pytest_pyfunc_call_handle_group(pyfuncitem: Function) -> Generator[None, Any
     coros: List[Coroutine] = []
     loop = asyncio.get_event_loop()
 
-    for childFunc in pyfuncitem._pytest_asyncio_concurrent_children:
+    for childFunc in pyfuncitem._pytest_asyncio_unfailed_children:
         coros.append(_async_callinfo_from_call(_pytest_function_call_async(childFunc)))
 
     call_result = loop.run_until_complete(asyncio.gather(*coros))
 
-    for childFunc, call in zip(pyfuncitem._pytest_asyncio_concurrent_children, call_result):
+    for childFunc, call in zip(pyfuncitem._pytest_asyncio_unfailed_children, call_result):
         report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
         childFunc.ihook.pytest_runtest_logreport(report=report)
 
@@ -233,7 +238,10 @@ async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> CallInfo:
         result = await func()
     except BaseException:
         excinfo = ExceptionInfo.from_current()
-        if isinstance(excinfo.value, outcomes.Exit):
+        if (
+            isinstance(excinfo.value, outcomes.Exit) or 
+            isinstance(excinfo.value,  KeyboardInterrupt)
+        ):
             raise
         result = None
 
@@ -261,32 +269,49 @@ def pytest_runtest_teardown_group_children(
     if not isinstance(item, AsyncioConcurrentGroup):
         return (yield)
 
-    for childFunc in item._pytest_asyncio_concurrent_children:
-        call = CallInfo.from_call(_pytest_simple_teardown(childFunc), "teardown")
-        report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
-        childFunc.ihook.pytest_runtest_logreport(report=report)
+    with _setupstate_teardown_hijacked(
+        item._pytest_asyncio_concurrent_children
+    ):
+        for childFunc in item._pytest_asyncio_concurrent_children:
+            runner.call_and_report(childFunc, "teardown", nextitem=nextitem)
 
     return (yield)
 
 
-def _pytest_simple_teardown(item: Item) -> Callable[[], None]:
-    def inner() -> None:
-        finalizers, _ = item.session._setupstate.stack.pop(item)
-        these_exceptions = []
-        while finalizers:
-            fin = finalizers.pop()
-            try:
-                fin()
-            except Exception as e:
-                these_exceptions.append(e)
+def _pytest_setupstate_teardown_items_without_assert(
+    items: List[Function]
+) -> Callable[[runner.SetupState, Item], None]:
+    def inner(self: runner.SetupState, nextitem: Item):
+        for item in items:
+            if item not in self.stack:
+                continue
+            
+            finalizers, _ = self.stack.pop(item)
+            these_exceptions = []
+            while finalizers:
+                fin = finalizers.pop()
+                try:
+                    fin()
+                except Exception as e:
+                    these_exceptions.append(e)
 
-        if len(these_exceptions) == 1:
-            raise these_exceptions[0]
-        elif these_exceptions:
-            msg = f"Errors during tearing down {item}"
-            raise BaseExceptionGroup(msg, these_exceptions[::-1])
+            if len(these_exceptions) == 1:
+                raise these_exceptions[0]
+            elif these_exceptions:
+                msg = f"Errors during tearing down {item}"
+                raise BaseExceptionGroup(msg, these_exceptions[::-1])
 
     return inner
+
+@contextmanager
+def _setupstate_teardown_hijacked(items: List[Function]) -> Generator[None, None, None]:
+    original = getattr(runner.SetupState, "teardown_exact")
+    setattr(runner.SetupState, "teardown_exact", _pytest_setupstate_teardown_items_without_assert(items))
+    
+    yield
+    
+    setattr(runner.SetupState, "teardown_exact", original)
+
 
 
 # =========================== # reporting #===========================#
