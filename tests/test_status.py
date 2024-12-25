@@ -90,7 +90,7 @@ def test_xfail_xpass(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_xfail():
                 raise AssertionError
-                
+
             @pytest.mark.xfail
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_xpass():
