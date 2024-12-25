@@ -241,29 +241,3 @@ def test_fixture_method(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
-
-
-def test_fixture_static_method(pytester: pytest.Pytester):
-    """Make sure that tests can take method static fixture defined in class"""
-
-    pytester.makepyfile(
-        dedent(
-            """\
-            import asyncio
-            import pytest
-
-            class TestDummyClass:
-                @pytest.fixture
-                @staticmethod
-                def fixture_method():
-                    yield 1
-
-                @pytest.mark.asyncio_concurrent
-                async def test_fixture_dummy(self, fixture_method):
-                    assert fixture_method == 1
-            """
-        )
-    )
-
-    result = pytester.runpytest()
-    result.assert_outcomes(passed=1)

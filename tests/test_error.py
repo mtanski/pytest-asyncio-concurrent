@@ -13,7 +13,7 @@ def test_grouping_error(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_A():
-                assert 1 == 1
+                pass
             """
         )
     )
@@ -26,11 +26,11 @@ def test_grouping_error(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_A():
-                assert 1 == 1
+                pass
 
             @pytest.mark.asyncio_concurrent(group="B")
             async def test_B():
-                assert 1 == 1
+                pass
             """
         )
     )
@@ -51,11 +51,11 @@ def test_marked_synced_error(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent
             def test_sync():
-                assert 1 == 1
+                pass
 
             @pytest.mark.asyncio_concurrent
             async def test_async():
-                assert 1 == 1
+                pass
             """
         )
     )

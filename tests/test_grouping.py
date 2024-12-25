@@ -14,12 +14,10 @@ def test_groups_different(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_A():
                 await asyncio.sleep(0.1)
-                assert 1 == 1
 
             @pytest.mark.asyncio_concurrent(group="B")
             async def test_group_B():
                 await asyncio.sleep(0.2)
-                assert 1 == 1
             """
         )
     )
@@ -42,12 +40,10 @@ def test_groups_anonymous(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent
             async def test_group_A():
                 await asyncio.sleep(0.1)
-                assert 1 == 1
 
             @pytest.mark.asyncio_concurrent
             async def test_group_B():
                 await asyncio.sleep(0.2)
-                assert 1 == 1
             """
         )
     )
@@ -70,12 +66,10 @@ def test_groups_same(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_anonymous_A():
                 await asyncio.sleep(0.2)
-                assert 1 == 1
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_anonymous_B():
                 await asyncio.sleep(0.1)
-                assert 1 == 1
             """
         )
     )

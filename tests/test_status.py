@@ -13,11 +13,11 @@ def test_fail(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_passing():
-                assert 1 == 1
+                pass
 
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_failed():
-                assert 1 == 2
+                raise AssertionError
             """
         )
     )
@@ -27,7 +27,7 @@ def test_fail(pytester: pytest.Pytester):
 
 
 def test_skip(pytester: pytest.Pytester):
-    """Make sure tests failed is reported correctly"""
+    """Make sure tests skip is reported correctly"""
 
     pytester.makepyfile(
         dedent(
@@ -38,11 +38,11 @@ def test_skip(pytester: pytest.Pytester):
             @pytest.mark.skip(reason="")
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_skiping():
-                assert 1 == 1
+                pass
 
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_passing():
-                assert 1 == 1
+                pass
             """
         )
     )
@@ -52,7 +52,7 @@ def test_skip(pytester: pytest.Pytester):
 
 
 def test_skip_if(pytester: pytest.Pytester):
-    """Make sure tests failed is reported correctly"""
+    """Make sure tests skip if is handled correctly"""
 
     pytester.makepyfile(
         dedent(
@@ -63,12 +63,12 @@ def test_skip_if(pytester: pytest.Pytester):
             @pytest.mark.skipif(1 == 1, reason="")
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_skiping():
-                assert 1 == 1
+                pass
 
             @pytest.mark.skipif(1 == 2, reason="")
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_passing():
-                assert 1 == 1
+                pass
             """
         )
     )
@@ -78,7 +78,7 @@ def test_skip_if(pytester: pytest.Pytester):
 
 
 def test_xfail_xpass(pytester: pytest.Pytester):
-    """Make sure tests failed is reported correctly"""
+    """Make sure tests xfail and xpass is reported correctly"""
 
     pytester.makepyfile(
         dedent(
@@ -89,16 +89,16 @@ def test_xfail_xpass(pytester: pytest.Pytester):
             @pytest.mark.xfail
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_xfail():
-                assert 1 == 2
+                raise AssertionError
                 
             @pytest.mark.xfail
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_xpass():
-                assert 1 == 1
+                pass
 
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_failing():
-                assert 1 == 2
+                raise AssertionError
             """
         )
     )

@@ -113,15 +113,14 @@ def group_asyncio_concurrent_function(
         elif parent is not func_parent:
             have_same_parent = False
 
-    if have_same_parent:
-        group_callobj = lambda: None
-    else:
-        group_callobj = lambda: warnings.warn(
+    def _warn_children_with_different_parent():
+        warnings.warn(
             PytestAsyncioConcurrentGroupingWarning(
                 f"Asyncio Concurrent Group [{group_name}] has children from different parents"
             )
         )
 
+    if not have_same_parent:
         for childFunc in children:
             childFunc.add_marker(pytest.mark.skip)
 
@@ -131,7 +130,7 @@ def group_asyncio_concurrent_function(
     g_function = AsyncioConcurrentGroup.from_parent(
         parent,
         name=f"ayncio_concurrent_test_group[{group_name}]",
-        callobj=group_callobj,
+        callobj=_warn_children_with_different_parent if not have_same_parent else lambda: None,
     )
 
     g_function._pytest_asyncio_concurrent_children = children
