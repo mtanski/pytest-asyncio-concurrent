@@ -42,7 +42,7 @@ def test_grouping_error(pytester: pytest.Pytester):
 
 def test_marked_synced_error(pytester: pytest.Pytester):
     """Make sure tests got skipped if synced tests got marked"""
-    
+
     pytester.makepyfile(
         dedent(
             """\

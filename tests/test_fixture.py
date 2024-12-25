@@ -184,8 +184,8 @@ def test_fixture_autouse(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
-    
-    
+
+
 def test_fixture_usefixture(pytester: pytest.Pytester):
     """Make sure that tests can take usefixuture fixture"""
 
@@ -216,9 +216,9 @@ def test_fixture_usefixture(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
-    
 
-def test_fixture_class_method(pytester: pytest.Pytester):
+
+def test_fixture_method(pytester: pytest.Pytester):
     """Make sure that tests can take method fixture defined in class"""
 
     pytester.makepyfile(
@@ -241,9 +241,9 @@ def test_fixture_class_method(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
-    
 
-def test_fixture_class_static_method(pytester: pytest.Pytester):
+
+def test_fixture_static_method(pytester: pytest.Pytester):
     """Make sure that tests can take method static fixture defined in class"""
 
     pytester.makepyfile(
@@ -253,7 +253,7 @@ def test_fixture_class_static_method(pytester: pytest.Pytester):
             import pytest
 
             class TestDummyClass:
-                @pytest.fixture(autouse=True)
+                @pytest.fixture
                 @staticmethod
                 def fixture_method():
                     yield 1
