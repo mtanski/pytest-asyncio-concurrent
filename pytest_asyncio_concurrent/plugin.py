@@ -1,6 +1,9 @@
 import asyncio
+from contextlib import contextmanager
+import inspect
 from typing import Any, Callable, Generator, List, Optional, Coroutine, Dict, cast
 import uuid
+import warnings
 
 import pytest
 from _pytest import scope, timing, outcomes, runner
@@ -9,6 +12,7 @@ from pytest import (
     ExceptionInfo,
     FixtureDef,
     Item,
+    PytestWarning,
     Session,
     Config,
     Function,
@@ -17,19 +21,41 @@ from pytest import (
 )
 
 
+class AsyncioConcurrentGroup(Function):
+    """
+    The Function Group containing underneath children functions.
+    """
+
+    _pytest_asyncio_concurrent_children: List[Function] = []
+
+    #: While setup and teardown are performed upon all child items,
+    #: call is only performed on tests passing setup step.
+    _pytest_asyncio_passing_setup_children: List[Function] = []
+
+
+class PytestAsyncioConcurrentGroupingWarning(PytestWarning):
+    """Raised when Test from different parent grouped into same group."""
+
+
+class PytestAsyncioConcurrentInvalidMarkWarning(PytestWarning):
+    """Raised when Sync Test got marked."""
+
+
 # =========================== # Config & Collection # =========================== #
 def pytest_configure(config: Config) -> None:
     config.addinivalue_line(
         "markers",
-        "asyncio_concurrent(group, timeout): " "mark the tests to run concurrently",
+        "asyncio_concurrent(group, timeout): " "mark the async tests to run concurrently",
     )
 
 
 @pytest.hookimpl(specname="pytest_runtestloop", wrapper=True)
 def pytest_runtestloop_wrap_items_by_group(session: Session) -> Generator[None, Any, Any]:
     """
-    Group items with same asyncio concurrent group together,
-    so they can be executed together in outer loop.
+    Wrapping around pytest_runtestloop, grouping items with same asyncio concurrent group
+    together before formal pytest_runtestloop, and ungroup them after everything done.
+    The reason putting grouping logic here instead of pytest_pycollect_makeitem is to have
+    the item collection summary before and after have correct information.
     """
     asycio_concurrent_groups: Dict[str, List[Function]] = {}
     items = session.items
@@ -61,14 +87,22 @@ def pytest_runtestloop_wrap_items_by_group(session: Session) -> Generator[None, 
     return result
 
 
-class AsyncioConcurrentGroup(Function):
-    _pytest_asyncio_concurrent_children: List[Function] = []
-
-
 def group_asyncio_concurrent_function(
     group_name: str, children: List[Function]
 ) -> AsyncioConcurrentGroup:
+    """
+    Grouping children with same mark into AsyncioConcurrentGroup.
+    - Check all children have same parent:
+        - if True: Group them
+        - If False:
+            - Give AsyncioConcurrentGroup function to emit a warning.
+            - Give all children function a skip mark.
+    - Rewrite all function scoped fixture registered on each child function,
+        to avoid function scoped fixture got shared within same group.
+    """
+
     parent = None
+    have_same_parent = True
     for childFunc in children:
         p_it = childFunc.iter_parents()
         next(p_it)
@@ -77,17 +111,30 @@ def group_asyncio_concurrent_function(
         if not parent:
             parent = func_parent
         elif parent is not func_parent:
-            raise Exception("test case within same group should have same parent.")
+            have_same_parent = False
 
+    def _warn_children_with_different_parent():
+        warnings.warn(
+            PytestAsyncioConcurrentGroupingWarning(
+                f"Asyncio Concurrent Group [{group_name}] has children from different parents"
+            )
+        )
+
+    if not have_same_parent:
+        for childFunc in children:
+            childFunc.add_marker(pytest.mark.skip)
+
+    for childFunc in children:
         _rewrite_function_scoped_fixture(childFunc)
 
     g_function = AsyncioConcurrentGroup.from_parent(
         parent,
         name=f"ayncio_concurrent_test_group[{group_name}]",
-        callobj=lambda: None,
+        callobj=_warn_children_with_different_parent if not have_same_parent else lambda: None,
     )
 
     g_function._pytest_asyncio_concurrent_children = children
+    g_function._pytest_asyncio_passing_setup_children = children.copy()
     return g_function
 
 
@@ -118,29 +165,54 @@ def _rewrite_function_scoped_fixture(item: Function):
 
 @pytest.hookimpl(specname="pytest_runtest_setup", wrapper=True)
 def pytest_runtest_setup_group_children(item: Item) -> Generator[None, None, None]:
-    result = yield
+    """
+    - Hijack Session.SetupState setup function.
+    - Setup child function AFTER group got setup.
+    """
 
     if not isinstance(item, AsyncioConcurrentGroup):
-        return result
+        return (yield)
 
-    for childFunc in item._pytest_asyncio_concurrent_children:
-        call = CallInfo.from_call(_pytest_simple_setup(childFunc), "setup")
-        report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
-        childFunc.ihook.pytest_runtest_logreport(report=report)
+    result = yield
+
+    with _setupstate_setup_hijacked():
+        reports = [
+            runner.call_and_report(childFunc, "setup")
+            for childFunc in item._pytest_asyncio_concurrent_children
+        ]
+        item._pytest_asyncio_passing_setup_children = [
+            childFunc
+            for childFunc, report in zip(item._pytest_asyncio_concurrent_children, reports)
+            if report.passed
+        ]
 
     return result
 
 
-def _pytest_simple_setup(item: Item) -> Callable[[], None]:
-    def inner() -> None:
-        item.session._setupstate.stack[item] = ([item.teardown], None)
-        item.setup()
+def _pytest_setupstate_setup_without_assert(self: runner.SetupState, item: Item) -> None:
+    """A 'no assertion' version of SetupState.setup, to setup colloctor tree in 'wrong' order."""
+    self.stack[item] = ([item.teardown], None)
+    item.setup()
 
-    return inner
+
+@contextmanager
+def _setupstate_setup_hijacked() -> Generator[None, None, None]:
+    original = getattr(runner.SetupState, "setup")
+    setattr(runner.SetupState, "setup", _pytest_setupstate_setup_without_assert)
+
+    yield
+
+    setattr(runner.SetupState, "setup", original)
 
 
 @pytest.hookimpl(specname="pytest_pyfunc_call", wrapper=True)
 def pytest_pyfunc_call_handle_group(pyfuncitem: Function) -> Generator[None, Any, Any]:
+    """
+    - Call children functions which passed setup steps AFTER group got called.
+    - Gather all children funtion tasks, and run that in same event loop.
+    - Make and wite report of all child function after loop finished.
+    """
+
     result = yield
     if not isinstance(pyfuncitem, AsyncioConcurrentGroup):
         return result
@@ -148,12 +220,12 @@ def pytest_pyfunc_call_handle_group(pyfuncitem: Function) -> Generator[None, Any
     coros: List[Coroutine] = []
     loop = asyncio.get_event_loop()
 
-    for childFunc in pyfuncitem._pytest_asyncio_concurrent_children:
+    for childFunc in pyfuncitem._pytest_asyncio_passing_setup_children:
         coros.append(_async_callinfo_from_call(_pytest_function_call_async(childFunc)))
 
     call_result = loop.run_until_complete(asyncio.gather(*coros))
 
-    for childFunc, call in zip(pyfuncitem._pytest_asyncio_concurrent_children, call_result):
+    for childFunc, call in zip(pyfuncitem._pytest_asyncio_passing_setup_children, call_result):
         report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
         childFunc.ihook.pytest_runtest_logreport(report=report)
 
@@ -162,6 +234,15 @@ def pytest_pyfunc_call_handle_group(pyfuncitem: Function) -> Generator[None, Any
 
 def _pytest_function_call_async(item: Function) -> Callable[[], Coroutine]:
     async def inner() -> Any:
+        if not inspect.iscoroutinefunction(item.obj):
+            warnings.warn(
+                PytestAsyncioConcurrentInvalidMarkWarning(
+                    "Marking a sync function with @asyncio_concurrent is invalid."
+                )
+            )
+
+            pytest.skip("Marking a sync function with @asyncio_concurrent is invalid.")
+
         testfunction = item.obj
         testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
         return await testfunction(**testargs)
@@ -171,6 +252,8 @@ def _pytest_function_call_async(item: Function) -> Callable[[], Coroutine]:
 
 # referencing CallInfo.from_call
 async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> CallInfo:
+    """An async version of CallInfo.from_call"""
+
     excinfo = None
     start = timing.time()
     precise_start = timing.perf_counter()
@@ -178,7 +261,7 @@ async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> CallInfo:
         result = await func()
     except BaseException:
         excinfo = ExceptionInfo.from_current()
-        if isinstance(excinfo.value, outcomes.Exit):
+        if isinstance(excinfo.value, outcomes.Exit) or isinstance(excinfo.value, KeyboardInterrupt):
             raise
         result = None
 
@@ -203,35 +286,62 @@ async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> CallInfo:
 def pytest_runtest_teardown_group_children(
     item: Item, nextitem: Optional[Item]
 ) -> Generator[None, None, None]:
+    """
+    - Hijack Session.SetupState teardown_exact function.
+    - Teardown child function BEFORE group got teardown.
+    """
+
     if not isinstance(item, AsyncioConcurrentGroup):
         return (yield)
 
-    for childFunc in item._pytest_asyncio_concurrent_children:
-        call = CallInfo.from_call(_pytest_simple_teardown(childFunc), "teardown")
-        report: TestReport = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
-        childFunc.ihook.pytest_runtest_logreport(report=report)
+    with _setupstate_teardown_hijacked(item._pytest_asyncio_concurrent_children):
+        for childFunc in item._pytest_asyncio_concurrent_children:
+            runner.call_and_report(childFunc, "teardown", nextitem=nextitem)
 
     return (yield)
 
 
-def _pytest_simple_teardown(item: Item) -> Callable[[], None]:
-    def inner() -> None:
-        finalizers, _ = item.session._setupstate.stack.pop(item)
-        these_exceptions = []
-        while finalizers:
-            fin = finalizers.pop()
-            try:
-                fin()
-            except Exception as e:
-                these_exceptions.append(e)
+def _pytest_setupstate_teardown_items_without_assert(
+    items: List[Function],
+) -> Callable[[runner.SetupState, Item], None]:
+    """
+    A 'no assertion' version of teardown_exact.
+    Only tearing down the nodes given, cleaning up the SetupState.stack before getting caught.
+    """
 
-        if len(these_exceptions) == 1:
-            raise these_exceptions[0]
-        elif these_exceptions:
-            msg = f"Errors during tearing down {item}"
-            raise BaseExceptionGroup(msg, these_exceptions[::-1])
+    def inner(self: runner.SetupState, nextitem: Item):
+        for item in items:
+            if item not in self.stack:
+                continue
+
+            finalizers, _ = self.stack.pop(item)
+            these_exceptions = []
+            while finalizers:
+                fin = finalizers.pop()
+                try:
+                    fin()
+                except Exception as e:
+                    these_exceptions.append(e)
+
+            if len(these_exceptions) == 1:
+                raise these_exceptions[0]
+            elif these_exceptions:
+                msg = f"Errors during tearing down {item}"
+                raise BaseExceptionGroup(msg, these_exceptions[::-1])
 
     return inner
+
+
+@contextmanager
+def _setupstate_teardown_hijacked(items: List[Function]) -> Generator[None, None, None]:
+    original = getattr(runner.SetupState, "teardown_exact")
+    setattr(
+        runner.SetupState, "teardown_exact", _pytest_setupstate_teardown_items_without_assert(items)
+    )
+
+    yield
+
+    setattr(runner.SetupState, "teardown_exact", original)
 
 
 # =========================== # reporting #===========================#
@@ -241,6 +351,12 @@ def _pytest_simple_teardown(item: Item) -> Callable[[], None]:
 def pytest_runtest_protocol_skip_logging_for_group(
     item: Item, nextitem: Optional[Item]
 ) -> Optional[bool]:
+    """
+    Overwriting pytest_runtest_protocol AsyncioConcurrentGroup.
+    Calling pytest_runtest_logstart and pytest_runtest_logfinish before and after tests start.
+    Passing log param as False to runtestprotocol to avoid any reporting on AsyncioConcurrentGroup.
+    """
+
     if not isinstance(item, AsyncioConcurrentGroup):
         return None
 
