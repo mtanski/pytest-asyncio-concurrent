@@ -1,12 +1,13 @@
 import asyncio
 from contextlib import contextmanager
+import functools
 import inspect
 from typing import Any, Callable, Generator, List, Optional, Coroutine, Dict, cast
 import uuid
 import warnings
 
 import pytest
-from _pytest import scope, timing, outcomes, runner
+from _pytest import scope, timing, outcomes, runner, fixtures
 from pytest import (
     CallInfo,
     ExceptionInfo,
@@ -373,6 +374,69 @@ def pytest_runtest_protocol_skip_logging_for_group(
         )
 
     return True
+
+
+# =========================== # reporting #===========================#
+
+
+@pytest.hookimpl(specname="pytest_fixture_setup", tryfirst=True)
+def pytest_fixture_setup_wrap_(
+    fixturedef: FixtureDef[fixtures.FixtureValue], request: fixtures.SubRequest
+) -> None:
+    _synchronize_async_fixture(fixturedef)
+
+
+def _synchronize_async_fixture(fixturedef: FixtureDef) -> None:
+    """Wraps the fixture function of an async fixture in a synchronous function."""
+    if inspect.isasyncgenfunction(fixturedef.func):
+        _wrap_asyncgen_fixture(fixturedef)
+    elif inspect.iscoroutinefunction(fixturedef.func):
+        _wrap_async_fixture(fixturedef)
+
+
+def _wrap_asyncgen_fixture(fixturedef: FixtureDef) -> None:
+    fixtureFunc = fixturedef.func
+
+    @functools.wraps(fixtureFunc)
+    def _asyncgen_fixture_wrapper(**kwargs: Any):
+        event_loop = asyncio.new_event_loop()
+        gen_obj = fixtureFunc(**kwargs)
+
+        async def setup():
+            res = await gen_obj.__anext__()  # type: ignore[union-attr]
+            return res
+
+        async def teardown() -> None:
+            try:
+                await gen_obj.__anext__()  # type: ignore[union-attr]
+            except StopAsyncIteration:
+                pass
+            else:
+                msg = "Async generator fixture didn't stop."
+                msg += "Yield only once."
+                raise ValueError(msg)
+
+        result = event_loop.run_until_complete(setup())
+        yield result
+        event_loop.run_until_complete(teardown())
+
+    fixturedef.func = _asyncgen_fixture_wrapper  # type: ignore[misc]
+
+
+def _wrap_async_fixture(fixturedef: FixtureDef) -> None:
+    fixtureFunc = fixturedef.func
+
+    @functools.wraps(fixtureFunc)
+    def _async_fixture_wrapper(**kwargs: Dict[str, Any]):
+        event_loop = asyncio.get_event_loop()
+
+        async def setup():
+            res = await fixtureFunc(**kwargs)
+            return res
+
+        return event_loop.run_until_complete(setup())
+
+    fixturedef.func = _async_fixture_wrapper  # type: ignore[misc]
 
 
 def _get_asyncio_concurrent_mark(item: Item) -> Optional[Mark]:
