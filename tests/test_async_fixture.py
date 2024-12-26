@@ -137,4 +137,3 @@ def test_async_gen_fixture_error(pytester: pytest.Pytester):
     result = pytester.runpytest()
 
     result.assert_outcomes(passed=1, errors=1)
-
