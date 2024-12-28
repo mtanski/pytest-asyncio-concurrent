@@ -2,6 +2,7 @@ import asyncio
 from contextlib import contextmanager
 import functools
 import inspect
+import sys
 from typing import Any, Callable, Generator, List, Optional, Coroutine, Dict, cast
 import uuid
 import warnings
@@ -27,11 +28,79 @@ class AsyncioConcurrentGroup(Function):
     The Function Group containing underneath children functions.
     """
 
-    _pytest_asyncio_concurrent_children: List[Function] = []
+    _pytest_asyncio_concurrent_children: List["AsyncioConcurrentMember"]
+    _pytest_asyncio_passing_setup_children: List["AsyncioConcurrentMember"]
+    
+    group_name: str
+    have_same_parent: bool
+    
+    def __init__(
+        self, 
+        name, 
+        parent, 
+        config = None, 
+        callspec = None, 
+        callobj=..., 
+        keywords = None, 
+        session = None, 
+        fixtureinfo = None, 
+        originalname = None
+    ):
+        super().__init__(name, parent, config, callspec, callobj, keywords, session, fixtureinfo, originalname)
+        self._pytest_asyncio_concurrent_children = []
+        self._pytest_asyncio_passing_setup_children = []
+        self.have_same_parent = True
+        
+    @staticmethod
+    def from_pytest_function(item: Function) -> 'AsyncioConcurrentGroup':
+        group_name = _get_asyncio_concurrent_group(item)
+        p_it = item.iter_parents()
+        next(p_it)
+        parent = next(p_it)
+        
+        self = AsyncioConcurrentGroup.from_parent(
+            parent,
+            name=f"ayncio_concurrent_test_group[{group_name}]",
+            callobj=lambda: None,
+        )
+        
+        self.group_name = group_name
+        return self
 
-    #: While setup and teardown are performed upon all child items,
-    #: call is only performed on tests passing setup step.
-    _pytest_asyncio_passing_setup_children: List[Function] = []
+    def add_child(self, item: Function) -> None:
+        p_it = item.iter_parents()
+        next(p_it)
+        child_parent = next(p_it)
+        
+        if child_parent is not self.parent:
+            self.have_same_parent = False
+            self.obj = lambda: warnings.warn(
+                    PytestAsyncioConcurrentGroupingWarning(
+                        f"Asyncio Concurrent Group [{self.group_name}] has children from different parents"
+                    )
+                )
+
+            for child in self._pytest_asyncio_concurrent_children:
+                child.add_marker("skip")
+        
+        if not self.have_same_parent:
+            item.add_marker("skip")
+        
+        _rewrite_function_scoped_fixture(item)
+        # TODO wrap up logic here
+        self._pytest_asyncio_concurrent_children.append(item)
+
+
+class AsyncioConcurrentMember(Function):
+    def with_group(self, group: AsyncioConcurrentGroup) -> 'AsyncioConcurrentMember':
+        self._pytest_asyncio_concurrent_group = group
+        return self
+        
+    def iter_parents(self):
+        return self._pytest_asyncio_concurrent_group.iter_parents()
+    
+    def listchain(self):
+        return self._pytest_asyncio_concurrent_group.listchain()
 
 
 class PytestAsyncioConcurrentGroupingWarning(PytestWarning):
@@ -58,29 +127,30 @@ def pytest_runtestloop_wrap_items_by_group(session: Session) -> Generator[None, 
     The reason putting grouping logic here instead of pytest_pycollect_makeitem is to have
     the item collection summary before and after have correct information.
     """
-    asycio_concurrent_groups: Dict[str, List[Function]] = {}
+    asycio_concurrent_groups: Dict[str, AsyncioConcurrentGroup] = {}
     items = session.items
 
     for item in items:
+        item = cast(Function, item)
+        
         if _get_asyncio_concurrent_mark(item) is None:
             continue
 
         concurrent_group_name = _get_asyncio_concurrent_group(item)
         if concurrent_group_name not in asycio_concurrent_groups:
-            asycio_concurrent_groups[concurrent_group_name] = []
-        asycio_concurrent_groups[concurrent_group_name].append(cast(Function, item))
+            asycio_concurrent_groups[concurrent_group_name] = AsyncioConcurrentGroup.from_pytest_function(item)
+        asycio_concurrent_groups[concurrent_group_name].add_child(item)
 
-    for asyncio_items in asycio_concurrent_groups.values():
-        for item in asyncio_items:
+    for async_group in asycio_concurrent_groups.values():
+        for item in async_group._pytest_asyncio_concurrent_children:
             items.remove(item)
 
-    for group_name, asyncio_items in asycio_concurrent_groups.items():
-        items.append(group_asyncio_concurrent_function(group_name, asyncio_items))
+    for group in asycio_concurrent_groups.values():
+        items.append(group)
 
     result = yield
 
-    groups = [item for item in items if isinstance(item, AsyncioConcurrentGroup)]
-    for group in groups:
+    for group in asycio_concurrent_groups.values():
         items.remove(group)
         for item in group._pytest_asyncio_concurrent_children:
             items.append(item)
@@ -88,55 +158,53 @@ def pytest_runtestloop_wrap_items_by_group(session: Session) -> Generator[None, 
     return result
 
 
-def group_asyncio_concurrent_function(
-    group_name: str, children: List[Function]
-) -> AsyncioConcurrentGroup:
-    """
-    Grouping children with same mark into AsyncioConcurrentGroup.
-    - Check all children have same parent:
-        - if True: Group them
-        - If False:
-            - Give AsyncioConcurrentGroup function to emit a warning.
-            - Give all children function a skip mark.
-    - Rewrite all function scoped fixture registered on each child function,
-        to avoid function scoped fixture got shared within same group.
-    """
+# def group_asyncio_concurrent_function(
+#     group_name: str, children: List[Function]
+# ) -> AsyncioConcurrentGroup:
+#     """
+#     Grouping children with same mark into AsyncioConcurrentGroup.
+#     - Check all children have same parent:
+#         - if True: Group them
+#         - If False:
+#             - Give AsyncioConcurrentGroup function to emit a warning.
+#             - Give all children function a skip mark.
+#     - Rewrite all function scoped fixture registered on each child function,
+#         to avoid function scoped fixture got shared within same group.
+#     """
 
-    parent = None
-    have_same_parent = True
-    for childFunc in children:
-        p_it = childFunc.iter_parents()
-        next(p_it)
-        func_parent = next(p_it)
+#     parent = None
+#     have_same_parent = True
+#     for childFunc in children:
+#         p_it = childFunc.iter_parents()
+#         next(p_it)
+#         func_parent = next(p_it)
 
-        if not parent:
-            parent = func_parent
-        elif parent is not func_parent:
-            have_same_parent = False
+#         if not parent:
+#             parent = func_parent
+#         elif parent is not func_parent:
+#             have_same_parent = False
 
-    def _warn_children_with_different_parent():
-        warnings.warn(
-            PytestAsyncioConcurrentGroupingWarning(
-                f"Asyncio Concurrent Group [{group_name}] has children from different parents"
-            )
-        )
+#     def _warn_children_with_different_parent():
+#         warnings.warn(
+#             PytestAsyncioConcurrentGroupingWarning(
+#                 f"Asyncio Concurrent Group [{group_name}] has children from different parents"
+#             )
+#         )
 
-    if not have_same_parent:
-        for childFunc in children:
-            childFunc.add_marker(pytest.mark.skip)
+#     if not have_same_parent:
+#         for childFunc in children:
+#             childFunc.add_marker(pytest.mark.skip)
 
-    for childFunc in children:
-        _rewrite_function_scoped_fixture(childFunc)
+#     for childFunc in children:
+#         _rewrite_function_scoped_fixture(childFunc)
 
-    g_function = AsyncioConcurrentGroup.from_parent(
-        parent,
-        name=f"ayncio_concurrent_test_group[{group_name}]",
-        callobj=_warn_children_with_different_parent if not have_same_parent else lambda: None,
-    )
+#     g_function = AsyncioConcurrentGroup.from_parent(
+#         parent,
+#         name=f"ayncio_concurrent_test_group[{group_name}]",
+#         callobj=_warn_children_with_different_parent if not have_same_parent else lambda: None,
+#     )
 
-    g_function._pytest_asyncio_concurrent_children = children
-    g_function._pytest_asyncio_passing_setup_children = children.copy()
-    return g_function
+#     return g_function
 
 
 def _rewrite_function_scoped_fixture(item: Function):
