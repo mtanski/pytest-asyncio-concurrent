@@ -75,7 +75,7 @@ def test_fixture_scopes(pytester: pytest.Pytester):
             import pytest
 
             @pytest.mark.asyncio_concurrent
-            async def test_fixture_multi(
+            async def test_fixture_multi_scopes(
                 fixture_function,
                 fixture_class,
                 fixture_module,
@@ -120,7 +120,7 @@ def test_fixture_isolation(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="any")
             @pytest.mark.parametrize("p", [1, 2, 3])
-            async def test_fixture_multi(fixture_function, fixture_module, p):
+            async def test_parametrize_concurrrent(fixture_function, fixture_module, p):
                 await asyncio.sleep(p / 10)
 
                 fixture_module.append(p)
@@ -140,7 +140,7 @@ def test_fixture_isolation(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent
             @pytest.mark.parametrize("p", [1, 2, 3])
-            async def test_fixture_multi(fixture_function, fixture_module, p):
+            async def test_parametrize_sequential(fixture_function, fixture_module, p):
                 await asyncio.sleep(p / 10)
 
                 fixture_module.append(p)
