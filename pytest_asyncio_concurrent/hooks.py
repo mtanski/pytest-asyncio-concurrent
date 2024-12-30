@@ -22,7 +22,7 @@ def pytest_runtest_call_async(item: pytest.Item) -> Optional[Coroutine]:
 
 
 @pytest.hookspec()
-def pytest_runtest_setup_async_group(group: "AsyncioConcurrentGroup") -> None:
+def pytest_runtest_setup_async_group(item: "AsyncioConcurrentGroup") -> None:
     """
     The pytest_runtest_setup for async group.
     Should be called before any of its children setup
@@ -32,7 +32,7 @@ def pytest_runtest_setup_async_group(group: "AsyncioConcurrentGroup") -> None:
 
 @pytest.hookspec()
 def pytest_runtest_teardown_async_group(
-    group: "AsyncioConcurrentGroup", nextgroup: "AsyncioConcurrentGroup"
+    item: "AsyncioConcurrentGroup", nextitem: "AsyncioConcurrentGroup"
 ) -> None:
     """
     The pytest_runtest_teardown for async group.
