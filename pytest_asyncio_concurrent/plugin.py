@@ -4,7 +4,6 @@ import inspect
 import uuid
 import warnings
 
-from contextlib import contextmanager
 from typing import Any, Callable, Generator, List, Optional, Coroutine, Dict, cast
 
 import pytest
@@ -16,7 +15,7 @@ from _pytest import reports
 from _pytest import fixtures
 from _pytest import warnings as pytest_warning
 
-from .grouping import AsyncioConcurrentGroup
+from .grouping import AsyncioConcurrentGroup, AsyncioConcurrentGroupMember
 
 
 class PytestAsyncioConcurrentGroupingWarning(pytest.PytestWarning):
@@ -41,6 +40,8 @@ def pytest_addhooks(pluginmanager: pytest.PytestPluginManager) -> None:
 
     pluginmanager.add_hookspecs(hooks)
 
+
+# =========================== # pytest_runtest # =========================== #
 
 @pytest.hookimpl(specname="pytest_runtestloop", wrapper=True)
 def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generator[None, Any, Any]:
@@ -85,9 +86,9 @@ def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generat
 
 
 @pytest.hookimpl(specname="pytest_runtest_protocol_async_group")
-def pytest_runtest_protocol_async_group_impl(
+def pytest_runtest_protocol_async_group(
     group: AsyncioConcurrentGroup, nextgroup: Optional[AsyncioConcurrentGroup]
-) -> object:
+) -> object:    
     if not group.have_same_parent:
         for child in group.children:
             child.add_marker("skip")
@@ -110,9 +111,7 @@ def pytest_runtest_protocol_async_group_impl(
         )
 
     for childFunc in group.children:
-        with _setupstate_setup_hijacked():
-            # TODO: avoid using call_and_report
-            report = runner.call_and_report(childFunc, "setup")
+        report = _call_and_report_setup_async_function(childFunc)
 
         if report.passed:
             children_passed_setup.append(childFunc)
@@ -120,8 +119,7 @@ def pytest_runtest_protocol_async_group_impl(
     _pytest_runtest_call_async_group(children_passed_setup)
 
     for childFunc in group.children:
-        # TODO: avoid using call_and_report
-        runner.call_and_report(childFunc, "teardown", nextitem=nextgroup)
+        _call_and_report_teardown_async_function(childFunc, nextitem=nextgroup)
 
     for childFunc in group.children:
         childFunc.ihook.pytest_runtest_logfinish(
@@ -156,7 +154,7 @@ def _pytest_runtest_call_async_group(items: List[pytest.Function]) -> None:
 
 
 @pytest.hookimpl(specname="pytest_runtest_call_async")
-async def pytest_runtest_call_async_impl(item: pytest.Function) -> object:
+async def pytest_runtest_call_async(item: pytest.Function) -> object:
     if not inspect.iscoroutinefunction(item.obj):
         warnings.warn(
             PytestAsyncioConcurrentInvalidMarkWarning(
@@ -172,35 +170,35 @@ async def pytest_runtest_call_async_impl(item: pytest.Function) -> object:
 
 
 @pytest.hookimpl(specname="pytest_runtest_setup_async_group")
-def pytest_runtest_setup_async_group_impl(group: AsyncioConcurrentGroup) -> None:
+def pytest_runtest_setup_async_group(group: AsyncioConcurrentGroup) -> None:
     group.ihook.pytest_runtest_setup(item=group)
 
 
 @pytest.hookimpl(specname="pytest_runtest_teardown_async_group")
-def pytest_runtest_teardown_async_group_impl(
+def pytest_runtest_teardown_async_group(
     group: "AsyncioConcurrentGroup",
     nextgroup: "AsyncioConcurrentGroup",
 ) -> None:
     group.ihook.pytest_runtest_teardown(item=group, nextitem=nextgroup)
 
 
-# =========================== # hacks #===========================#
+@pytest.hookimpl(specname="pytest_runtest_setup")
+def pytest_runtest_setup_handle_async_function(item: pytest.Item) -> None:
+    if not isinstance(item, AsyncioConcurrentGroupMember):
+        return
 
-
-# TODO: get rid of these
-def _pytest_setupstate_setup_without_assert(self: runner.SetupState, item: pytest.Function) -> None:
-    """temporary POC hack, make a hook to get replace this"""
     item.setup()
 
 
-@contextmanager
-def _setupstate_setup_hijacked() -> Generator[None, None, None]:
-    original = getattr(runner.SetupState, "setup")
-    setattr(runner.SetupState, "setup", _pytest_setupstate_setup_without_assert)
+@pytest.hookimpl(specname="pytest_runtest_teardown")
+def pytest_runtest_teardown_handle_async_function(
+    item: pytest.Item, nextitem: Optional[pytest.Item]
+) -> None:
+    if not isinstance(item, AsyncioConcurrentGroupMember):
+        return
 
-    yield
-
-    setattr(runner.SetupState, "setup", original)
+    # TODO: handle teardown gracfully
+    pass
 
 
 # =========================== # warnings #===========================#
@@ -215,52 +213,6 @@ def pytest_runtest_protocol_async_group_warning(
         config=config, ihook=group.children[0].ihook, when="runtest", item=None
     ):
         return (yield)
-
-
-# =========================== # helper #===========================#
-
-
-def _get_asyncio_concurrent_mark(item: nodes.Item) -> Optional[pytest.Mark]:
-    return item.get_closest_marker("asyncio_concurrent")
-
-
-def _get_asyncio_concurrent_group(item: nodes.Item) -> str:
-    marker = item.get_closest_marker("asyncio_concurrent")
-    assert marker is not None
-
-    return marker.kwargs.get("group", f"anonymous_[{uuid.uuid4()}]")
-
-
-# referencing CallInfo.from_call
-async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> pytest.CallInfo:
-    """An async version of CallInfo.from_call"""
-
-    excinfo = None
-    start = timing.time()
-    precise_start = timing.perf_counter()
-    try:
-        result = await func()
-    except BaseException:
-        excinfo = pytest.ExceptionInfo.from_current()
-        if isinstance(excinfo.value, outcomes.Exit) or isinstance(excinfo.value, KeyboardInterrupt):
-            raise
-        result = None
-
-    precise_stop = timing.perf_counter()
-    duration = precise_stop - precise_start
-    stop = timing.time()
-
-    callInfo: pytest.CallInfo = pytest.CallInfo(
-        start=start,
-        stop=stop,
-        duration=duration,
-        when="call",
-        result=result,
-        excinfo=excinfo,
-        _ispytest=True,
-    )
-
-    return callInfo
 
 
 # =========================== # fixture #===========================#
@@ -324,3 +276,89 @@ def _wrap_asyncfunc_fixture(fixturedef: fixtures.FixtureDef) -> None:
         return event_loop.run_until_complete(setup())
 
     fixturedef.func = _async_fixture_wrapper  # type: ignore[misc]
+
+
+# =========================== # helper #===========================#
+
+
+def _get_asyncio_concurrent_mark(item: nodes.Item) -> Optional[pytest.Mark]:
+    return item.get_closest_marker("asyncio_concurrent")
+
+
+def _get_asyncio_concurrent_group(item: nodes.Item) -> str:
+    marker = item.get_closest_marker("asyncio_concurrent")
+    assert marker is not None
+
+    return marker.kwargs.get("group", f"anonymous_[{uuid.uuid4()}]")
+
+
+# referencing CallInfo.from_call
+async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> pytest.CallInfo:
+    """An async version of CallInfo.from_call"""
+
+    excinfo = None
+    start = timing.time()
+    precise_start = timing.perf_counter()
+    try:
+        result = await func()
+    except BaseException:
+        excinfo = pytest.ExceptionInfo.from_current()
+        if isinstance(excinfo.value, outcomes.Exit) or isinstance(excinfo.value, KeyboardInterrupt):
+            raise
+        result = None
+
+    precise_stop = timing.perf_counter()
+    duration = precise_stop - precise_start
+    stop = timing.time()
+
+    callInfo: pytest.CallInfo = pytest.CallInfo(
+        start=start,
+        stop=stop,
+        duration=duration,
+        when="call",
+        result=result,
+        excinfo=excinfo,
+        _ispytest=True,
+    )
+
+    return callInfo
+
+
+# referencing runner.call_and_report
+def _call_and_report_setup_async_function(item: AsyncioConcurrentGroupMember) -> pytest.TestReport:
+    invoker = item.config.pluginmanager.subset_hook_caller(
+        "pytest_runtest_setup", [runner]
+    )
+    reraise: tuple[type[BaseException], ...] = (outcomes.Exit,)
+    if not item.config.getoption("usepdb", False):
+        reraise += (KeyboardInterrupt,)
+        
+    call = pytest.CallInfo.from_call(lambda: invoker(item=item), when="setup", reraise=reraise)
+    report: pytest.TestReport = item.ihook.pytest_runtest_makereport(item=item, call=call)
+    item.ihook.pytest_runtest_logreport(report=report)
+
+    if runner.check_interactive_exception(call, report):
+        item.ihook.pytest_exception_interact(node=item, call=call, report=report)
+    return report
+
+
+def _call_and_report_teardown_async_function(
+    item: AsyncioConcurrentGroupMember,
+    nextitem: Optional[pytest.Item],
+) -> pytest.TestReport:
+    invoker = item.config.pluginmanager.subset_hook_caller(
+        "pytest_runtest_teardown", [runner]
+    )
+    reraise: tuple[type[BaseException], ...] = (outcomes.Exit,)
+    if not item.config.getoption("usepdb", False):
+        reraise += (KeyboardInterrupt,)
+        
+    call = pytest.CallInfo.from_call(
+        lambda: invoker(item=item, nextitem=nextitem), when="teardown", reraise=reraise
+    )
+    report: pytest.TestReport = item.ihook.pytest_runtest_makereport(item=item, call=call)
+    item.ihook.pytest_runtest_logreport(report=report)
+
+    if runner.check_interactive_exception(call, report):
+        item.ihook.pytest_exception_interact(node=item, call=call, report=report)
+    return report
