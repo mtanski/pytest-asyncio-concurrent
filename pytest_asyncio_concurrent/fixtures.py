@@ -11,15 +11,15 @@ from _pytest import fixtures
 def pytest_fixture_setup_wrap_async(
     fixturedef: fixtures.FixtureDef[fixtures.FixtureValue], request: fixtures.SubRequest
 ) -> None:
-    _synchronize_async_fixture(fixturedef)
+    _wrap_async_fixture(fixturedef)
 
 
-def _synchronize_async_fixture(fixturedef: fixtures.FixtureDef) -> None:
+def _wrap_async_fixture(fixturedef: fixtures.FixtureDef) -> None:
     """Wraps the fixture function of an async fixture in a synchronous function."""
     if inspect.isasyncgenfunction(fixturedef.func):
         _wrap_asyncgen_fixture(fixturedef)
     elif inspect.iscoroutinefunction(fixturedef.func):
-        _wrap_async_fixture(fixturedef)
+        _wrap_asyncfunc_fixture(fixturedef)
 
 
 def _wrap_asyncgen_fixture(fixturedef: fixtures.FixtureDef) -> None:
@@ -51,7 +51,7 @@ def _wrap_asyncgen_fixture(fixturedef: fixtures.FixtureDef) -> None:
     fixturedef.func = _asyncgen_fixture_wrapper  # type: ignore[misc]
 
 
-def _wrap_async_fixture(fixturedef: fixtures.FixtureDef) -> None:
+def _wrap_asyncfunc_fixture(fixturedef: fixtures.FixtureDef) -> None:
     fixtureFunc = fixturedef.func
 
     @functools.wraps(fixtureFunc)

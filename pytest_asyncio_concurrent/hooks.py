@@ -10,11 +10,31 @@ def pytest_runtest_protocol_async_group(
     nextgroup: Optional['AsyncioConcurrentGroup']
 ) -> object:
     """
-    the pytest_runtest_protocol for async group.
+    The pytest_runtest_protocol for async group.
     """
 
 @pytest.hookspec(firstresult=True)
 def pytest_runtest_call_async(item: pytest.Item) -> Optional[Coroutine]:
     """
-    the pytest_runtest_call for async function.
+    The pytest_runtest_call for async function.
+    """
+    
+
+@pytest.hookspec()
+def pytest_runtest_setup_async_group(group: 'AsyncioConcurrentGroup') -> None:
+    """
+    The pytest_runtest_setup for async group.
+    Should be called before any of its children setup
+    Also work as a safe guard to prevent polluting pytest environment.
+    """
+    
+@pytest.hookspec()
+def pytest_runtest_teardown_async_group(
+    group: 'AsyncioConcurrentGroup', 
+    nextgroup: 'AsyncioConcurrentGroup'
+) -> None:
+    """
+    The pytest_runtest_teardown for async group.
+    Should be called after all children finished teardown.
+    Also work as a safe guard to prevent polluting pytest environment.
     """
