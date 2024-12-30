@@ -19,7 +19,6 @@ from _pytest import warnings as pytest_warning
 from .grouping import AsyncioConcurrentGroup
 
 
-
 class PytestAsyncioConcurrentGroupingWarning(pytest.PytestWarning):
     """Raised when Test from different parent grouped into same group."""
 
@@ -179,13 +178,14 @@ def pytest_runtest_setup_async_group_impl(group: AsyncioConcurrentGroup) -> None
 
 @pytest.hookimpl(specname="pytest_runtest_teardown_async_group")
 def pytest_runtest_teardown_async_group_impl(
-    group: "AsyncioConcurrentGroup", 
+    group: "AsyncioConcurrentGroup",
     nextgroup: "AsyncioConcurrentGroup",
 ) -> None:
     group.ihook.pytest_runtest_teardown(item=group, nextitem=nextgroup)
 
 
 # =========================== # hacks #===========================#
+
 
 # TODO: get rid of these
 def _pytest_setupstate_setup_without_assert(self: runner.SetupState, item: pytest.Function) -> None:
@@ -261,6 +261,7 @@ async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> pytest.Cal
     )
 
     return callInfo
+
 
 # =========================== # fixture #===========================#
 
