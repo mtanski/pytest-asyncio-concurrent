@@ -88,8 +88,8 @@ def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generat
 @pytest.hookimpl(specname="pytest_runtest_protocol_async_group")
 def pytest_runtest_protocol_async_group(
     group: AsyncioConcurrentGroup, nextgroup: Optional[AsyncioConcurrentGroup]
-) -> object:    
-    if not group.have_same_parent:
+) -> object:
+    if not group.children_have_same_parent:
         for child in group.children:
             child.add_marker("skip")
 
@@ -104,30 +104,32 @@ def pytest_runtest_protocol_async_group(
 
     children_passed_setup: List[pytest.Function] = []
 
-    # group.ihook.pytest_runtest_setup_async_group(item=group)
-    _call_and_report(group, "pytest_runtest_setup_async_group", "setup")
     for childFunc in group.children:
         childFunc.ihook.pytest_runtest_logstart(
             nodeid=childFunc.nodeid, location=childFunc.location
         )
 
     for childFunc in group.children:
+        # bundle group setup with test setup until it pass 
+        # (which should either pass on first item, or fail all the way till end)
         report = _call_and_report(
-            childFunc, "pytest_runtest_setup", "setup", exclude_runner=True
+            _setup_child(childFunc, with_group=(not group.has_setup)), childFunc, "setup"
         )
-
-        if report.passed:
+        
+        if report.passed and group.has_setup:
             children_passed_setup.append(childFunc)
+            continue
 
-    _pytest_runtest_call_async_group(children_passed_setup)
+    _pytest_runtest_call_and_report_async_group(children_passed_setup)
 
-    for childFunc in group.children:
+    for i, childFunc in enumerate(group.children):
+        # teardown group with the last test.
         _call_and_report(
-            childFunc, 
-            "pytest_runtest_teardown",
-            "teardown",
-            exclude_runner=True, 
-            nextitem=nextgroup
+            _teardown_child(
+                childFunc, 
+                nextgroup=nextgroup, 
+                with_group=(i == len(group.children) - 1)
+            ), childFunc, "teardown"
         )
 
     for childFunc in group.children:
@@ -135,15 +137,10 @@ def pytest_runtest_protocol_async_group(
             nodeid=childFunc.nodeid, location=childFunc.location
         )
 
-    # group.ihook.pytest_runtest_teardown_async_group(item=group, nextitem=nextgroup)
-    _call_and_report(
-        group, "pytest_runtest_teardown_async_group", "teardown", nextitem=nextgroup,
-    )
-
     return True
 
 
-def _pytest_runtest_call_async_group(items: List[pytest.Function]) -> None:
+def _pytest_runtest_call_and_report_async_group(items: List[pytest.Function]) -> None:
     def hook_invoker(item: pytest.Function) -> Callable[[], Coroutine]:
         def inner() -> Coroutine:
             return childFunc.ihook.pytest_runtest_call_async(item=item)
@@ -165,6 +162,32 @@ def _pytest_runtest_call_async_group(items: List[pytest.Function]) -> None:
         childFunc.ihook.pytest_runtest_logreport(report=report)
 
 
+def _setup_child(item: AsyncioConcurrentGroupMember, with_group: bool = False) -> Callable[[], None]:
+    def inner() -> None:
+        if with_group:
+            item.ihook.pytest_runtest_setup_async_group(item=item.group)
+            
+        item.config.pluginmanager.subset_hook_caller(
+            "pytest_runtest_setup", [runner]
+        )(item=item)
+    
+    return inner
+
+def _teardown_child(
+    item: AsyncioConcurrentGroupMember, 
+    nextgroup: Optional[AsyncioConcurrentGroup],
+    with_group: bool = False
+) -> Callable[[], None]:
+    def inner() -> None:
+        item.config.pluginmanager.subset_hook_caller(
+            "pytest_runtest_teardown", [runner]
+        )(item=item, nextitem=nextgroup)
+        
+        if with_group:
+            item.ihook.pytest_runtest_teardown_async_group(item=item.group, nextitem=nextgroup)
+
+    return inner
+
 @pytest.hookimpl(specname="pytest_runtest_call_async")
 async def pytest_runtest_call_async(item: pytest.Function) -> object:
     if not inspect.iscoroutinefunction(item.obj):
@@ -183,7 +206,9 @@ async def pytest_runtest_call_async(item: pytest.Function) -> object:
 
 @pytest.hookimpl(specname="pytest_runtest_setup_async_group")
 def pytest_runtest_setup_async_group(item: AsyncioConcurrentGroup) -> None:
+    assert not item.has_setup
     item.ihook.pytest_runtest_setup(item=item)
+    item.has_setup = True
 
 
 @pytest.hookimpl(specname="pytest_runtest_teardown_async_group")
@@ -192,6 +217,8 @@ def pytest_runtest_teardown_async_group(
     nextitem: "AsyncioConcurrentGroup",
 ) -> None:
     item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
+    item.has_setup = False
+
 
 
 @pytest.hookimpl(specname="pytest_runtest_setup")
@@ -338,27 +365,19 @@ async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> pytest.Cal
 
 # referencing runner.call_and_report
 def _call_and_report(
+    func: Callable[[], None],
     item: pytest.Item, 
-    hookspec: str,
     when: Literal['setup', 'teardown'],
-    exclude_runner: bool = False,
-    **kwds,
 ) -> pytest.TestReport:
-    if exclude_runner:
-        invoker = item.config.pluginmanager.subset_hook_caller(
-            hookspec, [runner]
-        )
-    else:
-        invoker = getattr(item.ihook, hookspec)
-    
     reraise: tuple[type[BaseException], ...] = (outcomes.Exit,)
     if not item.config.getoption("usepdb", False):
         reraise += (KeyboardInterrupt,)
         
     call = pytest.CallInfo.from_call(
-        lambda: invoker(item=item, **kwds), when=when, reraise=reraise
+        func, when=when, reraise=reraise
     )
     report: pytest.TestReport = item.ihook.pytest_runtest_makereport(item=item, call=call)
+    print(report)
     item.ihook.pytest_runtest_logreport(report=report)
 
     if runner.check_interactive_exception(call, report):

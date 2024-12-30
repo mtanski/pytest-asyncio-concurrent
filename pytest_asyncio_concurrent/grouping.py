@@ -16,14 +16,16 @@ class AsyncioConcurrentGroup(pytest.Function):
     """
 
     _children: List["AsyncioConcurrentGroupMember"]
-    have_same_parent: bool
+    children_have_same_parent: bool
+    has_setup: bool
 
     def __init__(
         self,
         parent: nodes.Node,
         originalname: str,
     ):
-        self.have_same_parent = True
+        self.children_have_same_parent = True
+        self.has_setup = False
         self._children = []
         super().__init__(
             name=originalname,
@@ -45,11 +47,11 @@ class AsyncioConcurrentGroup(pytest.Function):
         child_parent = list(item.iter_parents())[1]
 
         if child_parent is not self.parent:
-            self.have_same_parent = False
+            self.children_have_same_parent = False
             for child in self._children:
                 child.add_marker("skip")
 
-        if not self.have_same_parent:
+        if not self.children_have_same_parent:
             item.add_marker("skip")
 
         self._children.append(AsyncioConcurrentGroupMember.promote_from_function(item, self))
