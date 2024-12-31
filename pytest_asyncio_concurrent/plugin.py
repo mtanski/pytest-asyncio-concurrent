@@ -216,9 +216,10 @@ def pytest_runtest_teardown_async_group(
     item: "AsyncioConcurrentGroup",
     nextitem: "AsyncioConcurrentGroup",
 ) -> None:
+    assert item.has_setup
+    assert not item.children_finalizer
     item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
     item.has_setup = False
-
 
 
 @pytest.hookimpl(specname="pytest_runtest_setup")
@@ -236,8 +237,7 @@ def pytest_runtest_teardown_handle_async_function(
     if not isinstance(item, AsyncioConcurrentGroupMember):
         return
 
-    # TODO: handle teardown gracfully
-    pass
+    item.group.teardown_child(item)
 
 
 # =========================== # warnings #===========================#
@@ -377,7 +377,6 @@ def _call_and_report(
         func, when=when, reraise=reraise
     )
     report: pytest.TestReport = item.ihook.pytest_runtest_makereport(item=item, call=call)
-    print(report)
     item.ihook.pytest_runtest_logreport(report=report)
 
     if runner.check_interactive_exception(call, report):

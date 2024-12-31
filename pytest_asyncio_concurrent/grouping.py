@@ -1,9 +1,10 @@
 import copy
-from typing import List
+from typing import Any, Callable, Dict, List
 
 import pytest
 from _pytest import nodes
 from _pytest import scope
+from _pytest import outcomes
 
 
 class PytestAysncioGroupInvokeError(BaseException):
@@ -15,8 +16,9 @@ class AsyncioConcurrentGroup(pytest.Function):
     The Function Group containing underneath children functions.
     """
 
-    _children: List["AsyncioConcurrentGroupMember"]
+    children: List["AsyncioConcurrentGroupMember"]
     children_have_same_parent: bool
+    children_finalizer: Dict["AsyncioConcurrentGroupMember", List[Callable[[], Any]]]
     has_setup: bool
 
     def __init__(
@@ -26,7 +28,8 @@ class AsyncioConcurrentGroup(pytest.Function):
     ):
         self.children_have_same_parent = True
         self.has_setup = False
-        self._children = []
+        self.children = []
+        self.children_finalizer = {}
         super().__init__(
             name=originalname,
             parent=parent,
@@ -39,22 +42,37 @@ class AsyncioConcurrentGroup(pytest.Function):
     def setup(self) -> None:
         pass
 
-    @property
-    def children(self) -> List["AsyncioConcurrentGroupMember"]:
-        return self._children
-
     def add_child(self, item: pytest.Function) -> None:
         child_parent = list(item.iter_parents())[1]
 
         if child_parent is not self.parent:
             self.children_have_same_parent = False
-            for child in self._children:
+            for child in self.children:
                 child.add_marker("skip")
 
         if not self.children_have_same_parent:
             item.add_marker("skip")
 
-        self._children.append(AsyncioConcurrentGroupMember.promote_from_function(item, self))
+        member = AsyncioConcurrentGroupMember.promote_from_function(item, self)
+        self.children.append(member)
+        self.children_finalizer[member] = []
+        
+    def teardown_child(self, item: "AsyncioConcurrentGroupMember") -> None:
+        finalizers = self.children_finalizer.pop(item)
+        exceptions = []
+
+        while finalizers:
+            fin = finalizers.pop()
+            try:
+                fin()
+            except outcomes.TEST_OUTCOME as e:
+                exceptions.append(e)
+
+        if len(exceptions) == 1:
+            raise exceptions[0]
+        elif len(exceptions) > 1:
+            msg = f"errors while tearing down {item!r}"
+            raise BaseExceptionGroup(msg, exceptions[::-1])
 
 
 class AsyncioConcurrentGroupMember(pytest.Function):
@@ -65,6 +83,7 @@ class AsyncioConcurrentGroupMember(pytest.Function):
     def promote_from_function(
         item: pytest.Function, group: AsyncioConcurrentGroup
     ) -> "AsyncioConcurrentGroupMember":
+        AsyncioConcurrentGroupMember._rewrite_function_scoped_fixture(item)
         member = AsyncioConcurrentGroupMember.from_parent(
             name=item.name,
             parent=item.parent,
@@ -75,24 +94,27 @@ class AsyncioConcurrentGroupMember(pytest.Function):
             originalname=item.originalname,
         )
 
-        AsyncioConcurrentGroupMember._rewrite_function_scoped_fixture(member)
 
         member.group = group
         member._inner = item
         return member
 
-    def addfinalizer(self, fin):
-        return self.group.addfinalizer(fin)
+    def addfinalizer(self, fin: Callable[[], Any]) -> None:
+        assert callable(fin)
+        self.group.children_finalizer[self].append(fin)
 
     @staticmethod
     def _rewrite_function_scoped_fixture(item: pytest.Function):
-        for name, fixturedefs in item._request._arg2fixturedefs.items():
+        for name, fixturedefs in item._fixtureinfo.name2fixturedefs.items():
             if hasattr(item, "callspec") and name in item.callspec.params.keys():
                 continue
 
             if fixturedefs[-1]._scope != scope.Scope.Function:
                 continue
-
+            
             new_fixdef = copy.copy(fixturedefs[-1])
+            if hasattr(new_fixdef, "_finalizers"):
+                new_fixdef._finalizers = []  # type: ignore
+
             fixturedefs = list(fixturedefs[0:-1]) + [new_fixdef]
-            item._request._arg2fixturedefs[name] = fixturedefs
+            item._fixtureinfo.name2fixturedefs[name] = fixturedefs
