@@ -56,7 +56,7 @@ class AsyncioConcurrentGroup(pytest.Function):
         member = AsyncioConcurrentGroupMember.promote_from_function(item, self)
         self.children.append(member)
         self.children_finalizer[member] = []
-        
+
     def teardown_child(self, item: "AsyncioConcurrentGroupMember") -> None:
         finalizers = self.children_finalizer.pop(item)
         exceptions = []
@@ -94,7 +94,6 @@ class AsyncioConcurrentGroupMember(pytest.Function):
             originalname=item.originalname,
         )
 
-
         member.group = group
         member._inner = item
         return member
@@ -111,7 +110,7 @@ class AsyncioConcurrentGroupMember(pytest.Function):
 
             if fixturedefs[-1]._scope != scope.Scope.Function:
                 continue
-            
+
             new_fixdef = copy.copy(fixturedefs[-1])
             if hasattr(new_fixdef, "_finalizers"):
                 new_fixdef._finalizers = []  # type: ignore
