@@ -1,8 +1,7 @@
 import pytest
-from typing import TYPE_CHECKING, Optional, Coroutine
+from typing import Optional, Coroutine
 
-if TYPE_CHECKING:
-    from .plugin import AsyncioConcurrentGroup
+from .plugin import AsyncioConcurrentGroup
 
 
 @pytest.hookspec(firstresult=True)
