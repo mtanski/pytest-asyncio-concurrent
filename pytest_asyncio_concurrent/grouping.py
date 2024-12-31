@@ -14,6 +14,7 @@ class PytestAysncioGroupInvokeError(BaseException):
 class AsyncioConcurrentGroup(pytest.Function):
     """
     The Function Group containing underneath children functions.
+    And Holding the finalizer registered on all children nodes.
     """
 
     children: List["AsyncioConcurrentGroupMember"]
@@ -53,6 +54,7 @@ class AsyncioConcurrentGroup(pytest.Function):
         if not self.children_have_same_parent:
             item.add_marker("skip")
 
+        # TODO: move this promote_from_function call to other pytest collection hooks
         member = AsyncioConcurrentGroupMember.promote_from_function(item, self)
         self.children.append(member)
         self.children_finalizer[member] = []
@@ -76,6 +78,11 @@ class AsyncioConcurrentGroup(pytest.Function):
 
 
 class AsyncioConcurrentGroupMember(pytest.Function):
+    """
+    A light wrapper around Function, representing a child of AsyncioConcurrentGroup.
+    Redirecting addfinalizer to group. To handle teardown by ourselves.
+    """
+    
     group: AsyncioConcurrentGroup
     _inner: pytest.Function
 
@@ -104,6 +111,9 @@ class AsyncioConcurrentGroupMember(pytest.Function):
 
     @staticmethod
     def _rewrite_function_scoped_fixture(item: pytest.Function):
+        # TODO: this function in general utilized some private properties.
+        # research to clean up as much as possible.
+        
         for name, fixturedefs in item._fixtureinfo.name2fixturedefs.items():
             if hasattr(item, "callspec") and name in item.callspec.params.keys():
                 continue
