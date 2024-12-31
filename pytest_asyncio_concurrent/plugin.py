@@ -4,12 +4,11 @@ import inspect
 import uuid
 import warnings
 
-from typing import Any, Callable, Generator, List, Literal, Optional, Coroutine, Dict, cast
+from typing import Any, Callable, Generator, List, Literal, Optional, Coroutine, Dict, Sequence, Union, cast
 
 import pytest
 from _pytest import timing
 from _pytest import outcomes
-from _pytest import runner
 from _pytest import warnings as pytest_warnings
 
 from .grouping import AsyncioConcurrentGroup, AsyncioConcurrentGroupMember
@@ -24,17 +23,70 @@ class PytestAsyncioConcurrentInvalidMarkWarning(pytest.PytestWarning):
 
 
 # =========================== # Config # =========================== #
+
+asyncio_concurrent_group_key = pytest.StashKey[Dict[str, AsyncioConcurrentGroup]]()
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "asyncio_concurrent(group, timeout): " "mark the async tests to run concurrently",
     )
+    config.stash[asyncio_concurrent_group_key] = {}
 
 
 @pytest.hookimpl
 def pytest_addhooks(pluginmanager: pytest.PytestPluginManager) -> None:
     from . import hooks
     pluginmanager.add_hookspecs(hooks)
+
+# =========================== # Collection # =========================== #
+MakeItemResult = Union[
+    None, 
+    pytest.Item, 
+    pytest.Collector, 
+    List[Union[pytest.Item, pytest.Collector]]
+]
+
+@pytest.hookimpl(specname="pytest_pycollect_makeitem", wrapper=True, trylast=True)
+def pytest_pycollect_makeitem_make_group_and_member(
+    collector: pytest.Collector, name: str, obj: object
+) -> Generator[None, MakeItemResult, MakeItemResult]:
+    known_groups = collector.config.stash[asyncio_concurrent_group_key]
+    
+    ori_result = (yield)
+    if ori_result is None:
+        return None
+    if not isinstance(ori_result, list):
+        ori_result = [ori_result] 
+
+    result = []
+    for item_or_collector in ori_result:
+        if (
+            not isinstance(item_or_collector, pytest.Function) or
+            _get_asyncio_concurrent_mark(item_or_collector) is None
+        ):
+            result.append(item_or_collector)
+            continue
+        
+        item = item_or_collector
+        group_name = _get_asyncio_concurrent_group(item)
+        if group_name not in known_groups:
+            known_groups[group_name] = AsyncioConcurrentGroup.from_parent(
+                parent=item.parent, originalname=f"AsyncioConcurrentGroup[{group_name}]"
+            )
+        group = known_groups[group_name]
+        
+        item = group.add_child(item)
+        result.append(item)
+    
+    return result
+
+
+@pytest.hookimpl(specname="pytest_deselected")
+def pytest_deselected_update_group(items: Sequence[pytest.Item]) -> None:
+    for item in items:
+        if isinstance(item, AsyncioConcurrentGroupMember):
+           item.group.remove_child(item)
 
 
 # =========================== # pytest_runtest # =========================== #
@@ -48,27 +100,19 @@ def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generat
     - Handle async tests by group, one at a time.
     - Ungroup them after everything done.
     """
-    asycio_concurrent_groups: Dict[str, AsyncioConcurrentGroup] = {}
     items = session.items
     ihook = session.ihook
+    groups = list(session.config.stash[asyncio_concurrent_group_key].values())
+    
+    asyncio_concurrent_tests = [
+        item for item in items if isinstance(item, AsyncioConcurrentGroupMember)
+    ]
+    assert sum([len(group.children) for group in groups]) == len(asyncio_concurrent_tests)
 
-    for item in items:
-        item = cast(pytest.Function, item)
-
-        if _get_asyncio_concurrent_mark(item) is None:
-            continue
-
-        concurrent_group_name = _get_asyncio_concurrent_group(item)
-        if concurrent_group_name not in asycio_concurrent_groups:
-            asycio_concurrent_groups[concurrent_group_name] = AsyncioConcurrentGroup.from_parent(
-                parent=item.parent, originalname=f"AsyncioConcurrentGroup[{concurrent_group_name}]"
-            )
-        asycio_concurrent_groups[concurrent_group_name].add_child(item)
-
-    groups = list(asycio_concurrent_groups.values())
+    
     for group in groups:
         for item in group.children:
-            items.remove(item._inner)
+            items.remove(item)
 
     result = yield
 
@@ -78,7 +122,7 @@ def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generat
 
     for group in groups:
         for item in group.children:
-            items.append(item._inner)
+            items.append(item)
 
     return result
 
@@ -203,7 +247,6 @@ def _teardown_child(
     Similar to setup, but pytest_runtest_teardown_async_group would be considered as part of 
     the last test's pytest_runtest_teardown during reporting.
     """
-    
     def inner() -> None:
         item.config.pluginmanager.subset_hook_caller("pytest_runtest_teardown", [
             item.config.pluginmanager.get_plugin("runner")    
@@ -237,6 +280,7 @@ def pytest_runtest_setup_async_group(item: AsyncioConcurrentGroup) -> None:
     AsyncioConcurrentGroup is the only node got push to 'SetupState' in pytest.
     AsyncioConcurrentGroupMember are registered under the hood of their group.
     """
+    # TODO: more assertion as safety guard
     assert not item.has_setup
     item.ihook.pytest_runtest_setup(item=item)
     item.has_setup = True
@@ -247,6 +291,7 @@ def pytest_runtest_teardown_async_group(
     item: "AsyncioConcurrentGroup",
     nextitem: "AsyncioConcurrentGroup",
 ) -> None:
+    # TODO: more assertion as safety guard
     assert item.has_setup
     assert len(item.children_finalizer) == 0
     item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
@@ -259,7 +304,6 @@ def pytest_runtest_setup_handle_async_function(item: pytest.Item) -> None:
     if not isinstance(item, AsyncioConcurrentGroupMember):
         return
 
-    # TODO: this is not part of public API atm.
     item.setup()
 
 
@@ -411,6 +455,10 @@ def _call_and_report(
     report: pytest.TestReport = item.ihook.pytest_runtest_makereport(item=item, call=call)
     item.ihook.pytest_runtest_logreport(report=report)
 
-    if runner.check_interactive_exception(call, report):
+    if (
+        call.excinfo and 
+        not isinstance(call.excinfo.value, outcomes.Skipped) and
+        not hasattr(report, "wasxfail")
+    ):
         item.ihook.pytest_exception_interact(node=item, call=call, report=report)
     return report

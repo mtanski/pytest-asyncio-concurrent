@@ -1,8 +1,7 @@
 import copy
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Sequence
 
 import pytest
-from _pytest import nodes
 from _pytest import scope
 from _pytest import outcomes
 
@@ -24,7 +23,7 @@ class AsyncioConcurrentGroup(pytest.Function):
 
     def __init__(
         self,
-        parent: nodes.Node,
+        parent,
         originalname: str,
     ):
         self.children_have_same_parent = True
@@ -43,7 +42,7 @@ class AsyncioConcurrentGroup(pytest.Function):
     def setup(self) -> None:
         pass
 
-    def add_child(self, item: pytest.Function) -> None:
+    def add_child(self, item: pytest.Function) -> 'AsyncioConcurrentGroupMember':
         child_parent = list(item.iter_parents())[1]
 
         if child_parent is not self.parent:
@@ -54,10 +53,10 @@ class AsyncioConcurrentGroup(pytest.Function):
         if not self.children_have_same_parent:
             item.add_marker("skip")
 
-        # TODO: move this promote_from_function call to other pytest collection hooks
         member = AsyncioConcurrentGroupMember.promote_from_function(item, self)
         self.children.append(member)
         self.children_finalizer[member] = []
+        return member
 
     def teardown_child(self, item: "AsyncioConcurrentGroupMember") -> None:
         finalizers = self.children_finalizer.pop(item)
@@ -75,6 +74,11 @@ class AsyncioConcurrentGroup(pytest.Function):
         elif len(exceptions) > 1:
             msg = f"errors while tearing down {item!r}"
             raise BaseExceptionGroup(msg, exceptions[::-1])
+
+    def remove_child(self, item: 'AsyncioConcurrentGroupMember') -> None:
+        assert item in self.children
+        self.children.remove(item)
+        self.children_finalizer.pop(item)
 
 
 class AsyncioConcurrentGroupMember(pytest.Function):
@@ -127,3 +131,5 @@ class AsyncioConcurrentGroupMember(pytest.Function):
 
             fixturedefs = list(fixturedefs[0:-1]) + [new_fixdef]
             item._fixtureinfo.name2fixturedefs[name] = fixturedefs
+
+
