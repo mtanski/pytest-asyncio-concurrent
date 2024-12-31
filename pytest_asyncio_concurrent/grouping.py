@@ -1,9 +1,14 @@
 import copy
-from typing import Any, Callable, Dict, List, Sequence
+import sys
+from typing import Any, Callable, Dict, List
 
 import pytest
 from _pytest import scope
 from _pytest import outcomes
+
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 
 class PytestAysncioGroupInvokeError(BaseException):

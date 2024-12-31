@@ -227,3 +227,50 @@ def test_fixture_teardown_error_grouping(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=3, errors=1)
+
+
+
+def test_fixture_teardown_error_grouping_multi_scope(pytester: pytest.Pytester):
+    """
+    Make sure that error in non-function scoped fixture teardown stage
+    will only errored once on the last test teardown.
+    """
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.fixture(scope="package")
+            def fixture_package():
+                yield
+                print("teardown fixture_package")
+                raise AssertionError
+
+            @pytest.fixture(scope="function")
+            def fixture_function():
+                yield
+                print("teardown fixture_function")
+                raise AssertionError
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_A(fixture_package):
+                pass
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_B(fixture_package):
+                pass
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_C(fixture_package, fixture_function):
+                pass
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=3, errors=1)
+    print(result.outlines)
+    assert "fixture_package" in "\n".join(result.outlines)
+    assert "fixture_function" in "\n".join(result.outlines)

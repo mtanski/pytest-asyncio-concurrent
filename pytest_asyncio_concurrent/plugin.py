@@ -3,6 +3,7 @@ import functools
 import inspect
 import uuid
 import warnings
+import sys
 
 from typing import Any, Callable, Generator, List, Literal, Optional, Coroutine, Dict, Sequence, Union, cast
 
@@ -10,6 +11,9 @@ import pytest
 from _pytest import timing
 from _pytest import outcomes
 from _pytest import warnings as pytest_warnings
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 from .grouping import AsyncioConcurrentGroup, AsyncioConcurrentGroupMember
 
@@ -248,13 +252,29 @@ def _teardown_child(
     the last test's pytest_runtest_teardown during reporting.
     """
     def inner() -> None:
-        item.config.pluginmanager.subset_hook_caller("pytest_runtest_teardown", [
-            item.config.pluginmanager.get_plugin("runner")    
-        ])(item=item, nextitem=nextgroup)
+        exceptions = []
+        try:
+            item.config.pluginmanager.subset_hook_caller("pytest_runtest_teardown", [
+                item.config.pluginmanager.get_plugin("runner")    
+            ])(item=item, nextitem=nextgroup)
+        except Exception as e:
+            exceptions.append(e)
 
-        if with_group:
-            item.ihook.pytest_runtest_teardown_async_group(item=item.group, nextitem=nextgroup)
-
+        try:
+            if with_group:
+                item.ihook.pytest_runtest_teardown_async_group(item=item.group, nextitem=nextgroup)
+        except Exception as e:
+            if isinstance(e, BaseExceptionGroup):
+                exceptions.extend(e.exceptions)  # type: ignore
+            else:
+                exceptions.append(e)
+        
+        if len(exceptions) == 1:
+            raise exceptions[0]
+        elif len(exceptions) > 1:
+            msg = f"errors while tearing down {item!r}"
+            raise BaseExceptionGroup(msg, exceptions)
+            
     return inner
 
 
@@ -280,7 +300,6 @@ def pytest_runtest_setup_async_group(item: AsyncioConcurrentGroup) -> None:
     AsyncioConcurrentGroup is the only node got push to 'SetupState' in pytest.
     AsyncioConcurrentGroupMember are registered under the hood of their group.
     """
-    # TODO: more assertion as safety guard
     assert not item.has_setup
     item.ihook.pytest_runtest_setup(item=item)
     item.has_setup = True
@@ -291,7 +310,6 @@ def pytest_runtest_teardown_async_group(
     item: "AsyncioConcurrentGroup",
     nextitem: "AsyncioConcurrentGroup",
 ) -> None:
-    # TODO: more assertion as safety guard
     assert item.has_setup
     assert len(item.children_finalizer) == 0
     item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
