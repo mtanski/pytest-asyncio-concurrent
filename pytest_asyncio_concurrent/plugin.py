@@ -10,10 +10,7 @@ import pytest
 from _pytest import timing
 from _pytest import outcomes
 from _pytest import runner
-from _pytest import nodes
-from _pytest import reports
-from _pytest import fixtures
-from _pytest import warnings as pytest_warning
+from _pytest import warnings as pytest_warnings
 
 from .grouping import AsyncioConcurrentGroup, AsyncioConcurrentGroupMember
 
@@ -37,7 +34,6 @@ def pytest_configure(config: pytest.Config) -> None:
 @pytest.hookimpl
 def pytest_addhooks(pluginmanager: pytest.PytestPluginManager) -> None:
     from . import hooks
-
     pluginmanager.add_hookspecs(hooks)
 
 
@@ -172,7 +168,7 @@ def _pytest_runtest_call_and_report_async_group(items: List[pytest.Function]) ->
     call_result = loop.run_until_complete(asyncio.gather(*coros))
 
     for childFunc, call in zip(items, call_result):
-        report: reports.TestReport = childFunc.ihook.pytest_runtest_makereport(
+        report = childFunc.ihook.pytest_runtest_makereport(
             item=childFunc, call=call
         )
         childFunc.ihook.pytest_runtest_logreport(report=report)
@@ -191,7 +187,9 @@ def _setup_child(
         if with_group:
             item.ihook.pytest_runtest_setup_async_group(item=item.group)
 
-        item.config.pluginmanager.subset_hook_caller("pytest_runtest_setup", [runner])(item=item)
+        item.config.pluginmanager.subset_hook_caller("pytest_runtest_setup", [
+            item.config.pluginmanager.get_plugin("runner")    
+        ])(item=item)
 
     return inner
 
@@ -207,9 +205,9 @@ def _teardown_child(
     """
     
     def inner() -> None:
-        item.config.pluginmanager.subset_hook_caller("pytest_runtest_teardown", [runner])(
-            item=item, nextitem=nextgroup
-        )
+        item.config.pluginmanager.subset_hook_caller("pytest_runtest_teardown", [
+            item.config.pluginmanager.get_plugin("runner")    
+        ])(item=item, nextitem=nextgroup)
 
         if with_group:
             item.ihook.pytest_runtest_teardown_async_group(item=item.group, nextitem=nextgroup)
@@ -284,7 +282,7 @@ def pytest_runtest_protocol_async_group_warning(
     group: "AsyncioConcurrentGroup", nextgroup: Optional["AsyncioConcurrentGroup"]
 ) -> Generator[None, object, object]:
     config = group.children[0].config
-    with pytest_warning.catch_warnings_for_item(
+    with pytest_warnings.catch_warnings_for_item(
         config=config, ihook=group.children[0].ihook, when="runtest", item=None
     ):
         return (yield)
@@ -295,12 +293,12 @@ def pytest_runtest_protocol_async_group_warning(
 
 @pytest.hookimpl(specname="pytest_fixture_setup", tryfirst=True)
 def pytest_fixture_setup_wrap_async(
-    fixturedef: fixtures.FixtureDef[fixtures.FixtureValue], request: fixtures.SubRequest
+    fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest
 ) -> None:
     _wrap_async_fixture(fixturedef)
 
 
-def _wrap_async_fixture(fixturedef: fixtures.FixtureDef) -> None:
+def _wrap_async_fixture(fixturedef: pytest.FixtureDef) -> None:
     """Wraps the fixture function of an async fixture in a synchronous function."""
     if inspect.isasyncgenfunction(fixturedef.func):
         _wrap_asyncgen_fixture(fixturedef)
@@ -308,7 +306,7 @@ def _wrap_async_fixture(fixturedef: fixtures.FixtureDef) -> None:
         _wrap_asyncfunc_fixture(fixturedef)
 
 
-def _wrap_asyncgen_fixture(fixturedef: fixtures.FixtureDef) -> None:
+def _wrap_asyncgen_fixture(fixturedef: pytest.FixtureDef) -> None:
     fixtureFunc = fixturedef.func
 
     @functools.wraps(fixtureFunc)
@@ -337,7 +335,7 @@ def _wrap_asyncgen_fixture(fixturedef: fixtures.FixtureDef) -> None:
     fixturedef.func = _asyncgen_fixture_wrapper  # type: ignore[misc]
 
 
-def _wrap_asyncfunc_fixture(fixturedef: fixtures.FixtureDef) -> None:
+def _wrap_asyncfunc_fixture(fixturedef: pytest.FixtureDef) -> None:
     fixtureFunc = fixturedef.func
 
     @functools.wraps(fixtureFunc)
@@ -356,11 +354,11 @@ def _wrap_asyncfunc_fixture(fixturedef: fixtures.FixtureDef) -> None:
 # =========================== # helper #===========================#
 
 
-def _get_asyncio_concurrent_mark(item: nodes.Item) -> Optional[pytest.Mark]:
+def _get_asyncio_concurrent_mark(item: pytest.Item) -> Optional[pytest.Mark]:
     return item.get_closest_marker("asyncio_concurrent")
 
 
-def _get_asyncio_concurrent_group(item: nodes.Item) -> str:
+def _get_asyncio_concurrent_group(item: pytest.Item) -> str:
     marker = item.get_closest_marker("asyncio_concurrent")
     assert marker is not None
 
