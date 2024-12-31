@@ -47,7 +47,7 @@ class AsyncioConcurrentGroup(pytest.Function):
     def setup(self) -> None:
         pass
 
-    def add_child(self, item: pytest.Function) -> 'AsyncioConcurrentGroupMember':
+    def add_child(self, item: pytest.Function) -> "AsyncioConcurrentGroupMember":
         child_parent = list(item.iter_parents())[1]
 
         if child_parent is not self.parent:
@@ -80,7 +80,7 @@ class AsyncioConcurrentGroup(pytest.Function):
             msg = f"errors while tearing down {item!r}"
             raise BaseExceptionGroup(msg, exceptions[::-1])
 
-    def remove_child(self, item: 'AsyncioConcurrentGroupMember') -> None:
+    def remove_child(self, item: "AsyncioConcurrentGroupMember") -> None:
         assert item in self.children
         self.children.remove(item)
         self.children_finalizer.pop(item)
@@ -91,7 +91,7 @@ class AsyncioConcurrentGroupMember(pytest.Function):
     A light wrapper around Function, representing a child of AsyncioConcurrentGroup.
     Redirecting addfinalizer to group. To handle teardown by ourselves.
     """
-    
+
     group: AsyncioConcurrentGroup
     _inner: pytest.Function
 
@@ -122,7 +122,7 @@ class AsyncioConcurrentGroupMember(pytest.Function):
     def _rewrite_function_scoped_fixture(item: pytest.Function):
         # TODO: this function in general utilized some private properties.
         # research to clean up as much as possible.
-        
+
         for name, fixturedefs in item._fixtureinfo.name2fixturedefs.items():
             if hasattr(item, "callspec") and name in item.callspec.params.keys():
                 continue
@@ -136,5 +136,3 @@ class AsyncioConcurrentGroupMember(pytest.Function):
 
             fixturedefs = list(fixturedefs[0:-1]) + [new_fixdef]
             item._fixtureinfo.name2fixturedefs[name] = fixturedefs
-
-

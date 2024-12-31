@@ -229,7 +229,6 @@ def test_fixture_teardown_error_grouping(pytester: pytest.Pytester):
     result.assert_outcomes(passed=3, errors=1)
 
 
-
 def test_fixture_teardown_error_grouping_multi_scope(pytester: pytest.Pytester):
     """
     Make sure that error in non-function scoped fixture teardown stage
