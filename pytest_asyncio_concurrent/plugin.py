@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import uuid
 import warnings
 import sys
@@ -12,6 +13,7 @@ from typing import (
     Optional,
     Coroutine,
     Dict,
+    Sequence,
     Union,
 )
 
@@ -20,14 +22,15 @@ from _pytest import timing
 from _pytest import outcomes
 from _pytest import warnings as pytest_warnings
 
+from .grouping import (
+    AsyncioConcurrentGroup,
+    AsyncioConcurrentGroupMember,
+    PytestAsyncioConcurrentInvalidMarkWarning,
+    PytestAsyncioConcurrentGroupingWarning,
+)
+
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
-
-from .grouping import *
-
-
-class PytestAsyncioConcurrentGroupingWarning(pytest.PytestWarning):
-    """Raised when Test from different parent grouped into same group."""
 
 
 # =========================== # Config # =========================== #
@@ -94,13 +97,24 @@ def pytest_pycollect_makeitem_make_group_and_member(
     return result
 
 
+# =========================== # deselect # =========================== #
+
+
+@pytest.hookimpl(specname="pytest_deselected")
+def pytest_deselected_update_group(items: Sequence[pytest.Item]) -> None:
+    """Remove item from group if deselected."""
+    for item in items:
+        if isinstance(item, AsyncioConcurrentGroupMember):
+            item.group.remove_child(item)
+
+
 # =========================== # pytest_runtestloop # =========================== #
 
 
 @pytest.hookimpl(specname="pytest_runtestloop", wrapper=True)
 def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generator[None, Any, Any]:
     """
-    - Wrapping around pytest_runtestloop, grouping items with same asyncio concurrent group together.
+    - Wrapping around pytest_runtestloop, grouping items with same group name together.
     - Run formal pytest_runtestloop without async tests.
     - Handle async tests by group, one at a time.
     - Ungroup them after everything done.
@@ -137,8 +151,10 @@ def pytest_runtest_protocol_async_group(
 ) -> object:
     """
     Handling life cycle of async group tests. Calling pytest hooks in the same order as pytest core,
-    but calling same hook on all tests in this group in batch. While for pytest_runtest_call, all tests
-    are called and gathered, and await in a single event loop, which is how tests running concurrently.
+    but calling same hook on all tests in this group in batch. While for pytest_runtest_call,
+    all tests are called and gathered, and await in a single event loop, which is how tests running
+    concurrently.
+
     Hooks order:
     - pytest_runtest_logstart (batch)
     - pytest_runtest_setup_async_group (bank reporting under tests)
@@ -292,6 +308,50 @@ def _teardown_child(
     return inner
 
 
+# =========================== # group lifcycle # =========================== #
+
+
+@pytest.hookimpl(specname="pytest_runtest_call_async")
+async def pytest_runtest_call_async(item: pytest.Function) -> object:
+    if not inspect.iscoroutinefunction(item.obj):
+        warnings.warn(
+            PytestAsyncioConcurrentInvalidMarkWarning(
+                "Marking a sync function with @asyncio_concurrent is invalid."
+            )
+        )
+
+        pytest.skip("Marking a sync function with @asyncio_concurrent is invalid.")
+
+    testfunction = item.obj
+    testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
+    return await testfunction(**testargs)
+
+
+@pytest.hookimpl(specname="pytest_runtest_setup_async_group")
+def pytest_runtest_setup_async_group(item: AsyncioConcurrentGroup) -> None:
+    """
+    AsyncioConcurrentGroup is the only node got push to 'SetupState' in pytest.
+    AsyncioConcurrentGroupMember are registered under the hood of their group.
+    """
+    assert not item.has_setup
+    item.ihook.pytest_runtest_setup(item=item)
+    item.has_setup = True
+
+
+@pytest.hookimpl(specname="pytest_runtest_teardown_async_group")
+def pytest_runtest_teardown_async_group(
+    item: "AsyncioConcurrentGroup",
+    nextitem: "AsyncioConcurrentGroup",
+) -> None:
+    assert item.has_setup
+    assert len(item.children_finalizer) == 0
+    item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
+    item.has_setup = False
+
+
+# =========================== # async lifcycle redirection # =========================== #
+
+
 @pytest.hookimpl(specname="pytest_runtest_setup")
 def pytest_runtest_setup_handle_async_function(item: pytest.Item) -> None:
     """We have skipped the one in pytest.runner, but we still need setup."""
@@ -305,7 +365,10 @@ def pytest_runtest_setup_handle_async_function(item: pytest.Item) -> None:
 def pytest_runtest_teardown_handle_async_function(
     item: pytest.Item, nextitem: Optional[pytest.Item]
 ) -> None:
-    """We have skipped the one in pytest.runner, redirecting to AsyncioConcurrentGroup for teardown."""
+    """
+    We have skipped the one in pytest.runner,
+    redirecting to AsyncioConcurrentGroup for teardown.
+    """
     if not isinstance(item, AsyncioConcurrentGroupMember):
         return
 

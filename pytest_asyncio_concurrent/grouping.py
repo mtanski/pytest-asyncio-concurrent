@@ -1,7 +1,6 @@
 import copy
-import inspect
 import sys
-from typing import Any, Callable, Dict, List, Sequence
+from typing import Any, Callable, Dict, List
 import warnings
 
 import pytest
@@ -11,6 +10,10 @@ from _pytest import outcomes
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
+
+
+class PytestAsyncioConcurrentGroupingWarning(pytest.PytestWarning):
+    """Raised when Test from different parent grouped into same group."""
 
 
 class PytestAsyncioConcurrentInvalidMarkWarning(pytest.PytestWarning):
@@ -166,12 +169,12 @@ class AsyncioConcurrentGroupMember(pytest.Function):
                     params=fixturedefs[-1].params,
                     _ispytest=True,  # Have to work around.
                 )
-            except:
+            except Exception:
                 warnings.warn(
                     f"""
-                    pytest {pytest.__version__} has a different private costructor API 
+                    pytest {pytest.__version__} has a different private costructor API
                     from what this plugin utilize. The teardown error in fixture {name}
-                    might be reported in wrong place. 
+                    might be reported in wrong place.
                     Please raise an issue.
                 """
                 )
@@ -179,55 +182,3 @@ class AsyncioConcurrentGroupMember(pytest.Function):
 
             fixturedefs = list(fixturedefs[0:-1]) + [new_fixdef]
             item._fixtureinfo.name2fixturedefs[name] = fixturedefs
-
-
-# =========================== # deselect # =========================== #
-
-
-@pytest.hookimpl(specname="pytest_deselected")
-def pytest_deselected_update_group(items: Sequence[pytest.Item]) -> None:
-    """Remove item from group if deselected."""
-    for item in items:
-        if isinstance(item, AsyncioConcurrentGroupMember):
-            item.group.remove_child(item)
-
-
-# =========================== # setup & call & teardown # =========================== #
-
-
-@pytest.hookimpl(specname="pytest_runtest_call_async")
-async def pytest_runtest_call_async(item: pytest.Function) -> object:
-    if not inspect.iscoroutinefunction(item.obj):
-        warnings.warn(
-            PytestAsyncioConcurrentInvalidMarkWarning(
-                "Marking a sync function with @asyncio_concurrent is invalid."
-            )
-        )
-
-        pytest.skip("Marking a sync function with @asyncio_concurrent is invalid.")
-
-    testfunction = item.obj
-    testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
-    return await testfunction(**testargs)
-
-
-@pytest.hookimpl(specname="pytest_runtest_setup_async_group")
-def pytest_runtest_setup_async_group(item: AsyncioConcurrentGroup) -> None:
-    """
-    AsyncioConcurrentGroup is the only node got push to 'SetupState' in pytest.
-    AsyncioConcurrentGroupMember are registered under the hood of their group.
-    """
-    assert not item.has_setup
-    item.ihook.pytest_runtest_setup(item=item)
-    item.has_setup = True
-
-
-@pytest.hookimpl(specname="pytest_runtest_teardown_async_group")
-def pytest_runtest_teardown_async_group(
-    item: "AsyncioConcurrentGroup",
-    nextitem: "AsyncioConcurrentGroup",
-) -> None:
-    assert item.has_setup
-    assert len(item.children_finalizer) == 0
-    item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
-    item.has_setup = False
