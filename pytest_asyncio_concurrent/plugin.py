@@ -1,6 +1,4 @@
 import asyncio
-import functools
-import inspect
 import uuid
 import warnings
 import sys
@@ -14,9 +12,7 @@ from typing import (
     Optional,
     Coroutine,
     Dict,
-    Sequence,
     Union,
-    cast,
 )
 
 import pytest
@@ -27,15 +23,11 @@ from _pytest import warnings as pytest_warnings
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
 
-from .grouping import AsyncioConcurrentGroup, AsyncioConcurrentGroupMember
+from .grouping import *
 
 
 class PytestAsyncioConcurrentGroupingWarning(pytest.PytestWarning):
     """Raised when Test from different parent grouped into same group."""
-
-
-class PytestAsyncioConcurrentInvalidMarkWarning(pytest.PytestWarning):
-    """Raised when Sync Test got marked."""
 
 
 # =========================== # Config # =========================== #
@@ -54,11 +46,14 @@ def pytest_configure(config: pytest.Config) -> None:
 @pytest.hookimpl
 def pytest_addhooks(pluginmanager: pytest.PytestPluginManager) -> None:
     from . import hooks
+    from . import fixture_async
 
     pluginmanager.add_hookspecs(hooks)
+    pluginmanager.register(fixture_async)
 
 
 # =========================== # Collection # =========================== #
+
 MakeItemResult = Union[
     None, pytest.Item, pytest.Collector, List[Union[pytest.Item, pytest.Collector]]
 ]
@@ -99,14 +94,7 @@ def pytest_pycollect_makeitem_make_group_and_member(
     return result
 
 
-@pytest.hookimpl(specname="pytest_deselected")
-def pytest_deselected_update_group(items: Sequence[pytest.Item]) -> None:
-    for item in items:
-        if isinstance(item, AsyncioConcurrentGroupMember):
-            item.group.remove_child(item)
-
-
-# =========================== # pytest_runtest # =========================== #
+# =========================== # pytest_runtestloop # =========================== #
 
 
 @pytest.hookimpl(specname="pytest_runtestloop", wrapper=True)
@@ -236,10 +224,17 @@ def _setup_child(
     item: AsyncioConcurrentGroupMember, with_group: bool = False
 ) -> Callable[[], None]:
     """
-    AsyncioConcurrentGroup is the only node got push to 'SetupState' in pytest.
-    AsyncioConcurrentGroupMember s' pytest_runtest_setup hook is skipping pytest.runner.
-    pytest_runtest_setup_async_group would be considered as part of
-    the first test's pytest_runtest_setup during reporting. Why not?
+    Setup flow for normal pytest tests:
+    - Push all nodes onto `SetupState`, start from furthest.
+    - Register fixture finalizers to repective node in `SetupState` according to its scope.
+    Setup flow for async pytest tests:
+    - Setup group
+        - Push all nodes onto `SetupState`, start from furthest.
+        - The node on the face will be `AsyncioConcurrentGroup`.
+    - Setup individual tests.
+        - Individual tests will not be pushed to SetupState.
+        - If non function scoped, register finalizers on parent node in `SetupState`
+        - If function scoped, register finalizers on its group.
     """
 
     def inner() -> None:
@@ -259,8 +254,15 @@ def _teardown_child(
     with_group: bool = False,
 ) -> Callable[[], None]:
     """
-    Similar to setup, but pytest_runtest_teardown_async_group would be considered as part of
-    the last test's pytest_runtest_teardown during reporting.
+    Similar to setup.
+    Teardown flow for normal pytest tests:
+    - Remove all nodes not used in next item from `SetupState`, start from closest.
+    - Call all finalizer on node removed.
+    Teardown flow for async pytest tests:
+    - Teardown individual tests.
+        - Remove individual test from group, and let group call their finalizers.
+    - Teardown group.
+        - Remove all nodes not used in next item from `SetupState`, start from closest.
     """
 
     def inner() -> None:
@@ -288,44 +290,6 @@ def _teardown_child(
             raise BaseExceptionGroup(msg, exceptions)
 
     return inner
-
-
-@pytest.hookimpl(specname="pytest_runtest_call_async")
-async def pytest_runtest_call_async(item: pytest.Function) -> object:
-    if not inspect.iscoroutinefunction(item.obj):
-        warnings.warn(
-            PytestAsyncioConcurrentInvalidMarkWarning(
-                "Marking a sync function with @asyncio_concurrent is invalid."
-            )
-        )
-
-        pytest.skip("Marking a sync function with @asyncio_concurrent is invalid.")
-
-    testfunction = item.obj
-    testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
-    return await testfunction(**testargs)
-
-
-@pytest.hookimpl(specname="pytest_runtest_setup_async_group")
-def pytest_runtest_setup_async_group(item: AsyncioConcurrentGroup) -> None:
-    """
-    AsyncioConcurrentGroup is the only node got push to 'SetupState' in pytest.
-    AsyncioConcurrentGroupMember are registered under the hood of their group.
-    """
-    assert not item.has_setup
-    item.ihook.pytest_runtest_setup(item=item)
-    item.has_setup = True
-
-
-@pytest.hookimpl(specname="pytest_runtest_teardown_async_group")
-def pytest_runtest_teardown_async_group(
-    item: "AsyncioConcurrentGroup",
-    nextitem: "AsyncioConcurrentGroup",
-) -> None:
-    assert item.has_setup
-    assert len(item.children_finalizer) == 0
-    item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
-    item.has_setup = False
 
 
 @pytest.hookimpl(specname="pytest_runtest_setup")
@@ -360,69 +324,6 @@ def pytest_runtest_protocol_async_group_warning(
         config=config, ihook=group.children[0].ihook, when="runtest", item=None
     ):
         return (yield)
-
-
-# =========================== # fixture #===========================#
-
-
-@pytest.hookimpl(specname="pytest_fixture_setup", tryfirst=True)
-def pytest_fixture_setup_wrap_async(
-    fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest
-) -> None:
-    _wrap_async_fixture(fixturedef)
-
-
-def _wrap_async_fixture(fixturedef: pytest.FixtureDef) -> None:
-    """Wraps the fixture function of an async fixture in a synchronous function."""
-    if inspect.isasyncgenfunction(fixturedef.func):
-        _wrap_asyncgen_fixture(fixturedef)
-    elif inspect.iscoroutinefunction(fixturedef.func):
-        _wrap_asyncfunc_fixture(fixturedef)
-
-
-def _wrap_asyncgen_fixture(fixturedef: pytest.FixtureDef) -> None:
-    fixtureFunc = fixturedef.func
-
-    @functools.wraps(fixtureFunc)
-    def _asyncgen_fixture_wrapper(**kwargs: Any):
-        event_loop = asyncio.new_event_loop()
-        gen_obj = fixtureFunc(**kwargs)
-
-        async def setup():
-            res = await gen_obj.__anext__()  # type: ignore[union-attr]
-            return res
-
-        async def teardown() -> None:
-            try:
-                await gen_obj.__anext__()  # type: ignore[union-attr]
-            except StopAsyncIteration:
-                pass
-            else:
-                msg = "Async generator fixture didn't stop."
-                msg += "Yield only once."
-                raise ValueError(msg)
-
-        result = event_loop.run_until_complete(setup())
-        yield result
-        event_loop.run_until_complete(teardown())
-
-    fixturedef.func = _asyncgen_fixture_wrapper  # type: ignore[misc]
-
-
-def _wrap_asyncfunc_fixture(fixturedef: pytest.FixtureDef) -> None:
-    fixtureFunc = fixturedef.func
-
-    @functools.wraps(fixtureFunc)
-    def _async_fixture_wrapper(**kwargs: Dict[str, Any]):
-        event_loop = asyncio.get_event_loop()
-
-        async def setup():
-            res = await fixtureFunc(**kwargs)
-            return res
-
-        return event_loop.run_until_complete(setup())
-
-    fixturedef.func = _async_fixture_wrapper  # type: ignore[misc]
 
 
 # =========================== # helper #===========================#

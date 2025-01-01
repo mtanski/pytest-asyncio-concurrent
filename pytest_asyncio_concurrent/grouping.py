@@ -1,14 +1,20 @@
 import copy
+import inspect
 import sys
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Sequence
+import warnings
 
 import pytest
-from _pytest import scope
+from _pytest import fixtures
 from _pytest import outcomes
 
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
+
+
+class PytestAsyncioConcurrentInvalidMarkWarning(pytest.PytestWarning):
+    """Raised when Sync Test got marked."""
 
 
 class PytestAysncioGroupInvokeError(BaseException):
@@ -18,7 +24,8 @@ class PytestAysncioGroupInvokeError(BaseException):
 class AsyncioConcurrentGroup(pytest.Function):
     """
     The Function Group containing underneath children functions.
-    And Holding the finalizer registered on all children nodes.
+    AsyncioConcurrentGroup will be pushed onto `SetupState` representing all children.
+    and in charging of holding and tearing down the finalizers from all children nodes.
     """
 
     children: List["AsyncioConcurrentGroupMember"]
@@ -89,7 +96,8 @@ class AsyncioConcurrentGroup(pytest.Function):
 class AsyncioConcurrentGroupMember(pytest.Function):
     """
     A light wrapper around Function, representing a child of AsyncioConcurrentGroup.
-    Redirecting addfinalizer to group. To handle teardown by ourselves.
+    The member won't be pushed to 'SetupState' to avoid assertion error. So instead of
+    registering finalizers to the node, it redirecting addfinalizer to its group.
     """
 
     group: AsyncioConcurrentGroup
@@ -123,16 +131,103 @@ class AsyncioConcurrentGroupMember(pytest.Function):
         # TODO: this function in general utilized some private properties.
         # research to clean up as much as possible.
 
+        # This is to solve two problem:
+        # 1. Funtion scoped fixture result value got shared in different tests in same group.
+        # 2. And fixture teardown got registered under right test using it.
+
+        # FixtureDef for each fixture is unique and held in FixtureManger and got injected into
+        # pytest.Item when the Item is constructed, and FixtureDef class is also in charge of
+        # holding finalizers and cache value.
+
+        # Fixture value caching is highly coupled with pytest entire lifecycle, implementing a
+        # thirdparty fixture cache manager will be hard.
+        # The first problem can be solved by shallow copy the fixtureDef, to split the cache_value.
+        # The finalizers are stored in a private list property in fixtureDef, which need to touch
+        # private API anyway.
+
+        # If the private API change, finalizer errors from this fixture but in different
+        # tests in same group will be reported in one function.
+
         for name, fixturedefs in item._fixtureinfo.name2fixturedefs.items():
             if hasattr(item, "callspec") and name in item.callspec.params.keys():
                 continue
 
-            if fixturedefs[-1]._scope != scope.Scope.Function:
+            if fixturedefs[-1].scope != "function":
                 continue
 
-            new_fixdef = copy.copy(fixturedefs[-1])
-            if hasattr(new_fixdef, "_finalizers"):
-                new_fixdef._finalizers = []  # type: ignore
+            try:
+                new_fixdef = fixtures.FixtureDef(
+                    argname=fixturedefs[-1].argname,
+                    scope=fixturedefs[-1].scope,
+                    baseid=fixturedefs[-1].baseid,
+                    config=item.config,
+                    func=fixturedefs[-1].func,
+                    ids=fixturedefs[-1].ids,
+                    params=fixturedefs[-1].params,
+                    _ispytest=True,  # Have to work around.
+                )
+            except:
+                warnings.warn(
+                    f"""
+                    pytest {pytest.__version__} has a different private costructor API 
+                    from what this plugin utilize. The teardown error in fixture {name}
+                    might be reported in wrong place. 
+                    Please raise an issue.
+                """
+                )
+                new_fixdef = copy.copy(fixturedefs[-1])
 
             fixturedefs = list(fixturedefs[0:-1]) + [new_fixdef]
             item._fixtureinfo.name2fixturedefs[name] = fixturedefs
+
+
+# =========================== # deselect # =========================== #
+
+
+@pytest.hookimpl(specname="pytest_deselected")
+def pytest_deselected_update_group(items: Sequence[pytest.Item]) -> None:
+    """Remove item from group if deselected."""
+    for item in items:
+        if isinstance(item, AsyncioConcurrentGroupMember):
+            item.group.remove_child(item)
+
+
+# =========================== # setup & call & teardown # =========================== #
+
+
+@pytest.hookimpl(specname="pytest_runtest_call_async")
+async def pytest_runtest_call_async(item: pytest.Function) -> object:
+    if not inspect.iscoroutinefunction(item.obj):
+        warnings.warn(
+            PytestAsyncioConcurrentInvalidMarkWarning(
+                "Marking a sync function with @asyncio_concurrent is invalid."
+            )
+        )
+
+        pytest.skip("Marking a sync function with @asyncio_concurrent is invalid.")
+
+    testfunction = item.obj
+    testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
+    return await testfunction(**testargs)
+
+
+@pytest.hookimpl(specname="pytest_runtest_setup_async_group")
+def pytest_runtest_setup_async_group(item: AsyncioConcurrentGroup) -> None:
+    """
+    AsyncioConcurrentGroup is the only node got push to 'SetupState' in pytest.
+    AsyncioConcurrentGroupMember are registered under the hood of their group.
+    """
+    assert not item.has_setup
+    item.ihook.pytest_runtest_setup(item=item)
+    item.has_setup = True
+
+
+@pytest.hookimpl(specname="pytest_runtest_teardown_async_group")
+def pytest_runtest_teardown_async_group(
+    item: "AsyncioConcurrentGroup",
+    nextitem: "AsyncioConcurrentGroup",
+) -> None:
+    assert item.has_setup
+    assert len(item.children_finalizer) == 0
+    item.ihook.pytest_runtest_teardown(item=item, nextitem=nextitem)
+    item.has_setup = False
