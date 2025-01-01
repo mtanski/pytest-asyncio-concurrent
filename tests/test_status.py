@@ -213,3 +213,28 @@ def test_teardown_error(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(errors=1, passed=1)
+
+
+def test_cmd_select(pytester: pytest.Pytester):
+    """Make sure group with same group exceuted together."""
+
+    pytester.makepyfile(test_dummy=
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.mark.asyncio_concurrent(group="A")
+            async def test_cmd_select_A():
+                await asyncio.sleep(0.2)
+
+            @pytest.mark.asyncio_concurrent(group="A")
+            async def test_cmd_select_B():
+                await asyncio.sleep(0.1)
+            """
+        )
+    )
+
+    result = pytester.runpytest("test_dummy.py::test_cmd_select_A")
+
+    result.assert_outcomes(passed=1)
