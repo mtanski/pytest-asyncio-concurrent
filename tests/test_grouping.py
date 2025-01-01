@@ -38,11 +38,11 @@ def test_groups_anonymous(pytester: pytest.Pytester):
             import pytest
 
             @pytest.mark.asyncio_concurrent
-            async def test_group_A():
+            async def test_group_anonymous_A():
                 await asyncio.sleep(0.1)
 
             @pytest.mark.asyncio_concurrent
-            async def test_group_B():
+            async def test_group_anonymous_B():
                 await asyncio.sleep(0.2)
             """
         )
@@ -64,11 +64,11 @@ def test_groups_same(pytester: pytest.Pytester):
             import pytest
 
             @pytest.mark.asyncio_concurrent(group="A")
-            async def test_group_anonymous_A():
+            async def test_group_same_A():
                 await asyncio.sleep(0.2)
 
             @pytest.mark.asyncio_concurrent(group="A")
-            async def test_group_anonymous_B():
+            async def test_group_same_B():
                 await asyncio.sleep(0.1)
             """
         )
