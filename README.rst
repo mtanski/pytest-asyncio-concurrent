@@ -33,8 +33,10 @@ Key Features
 
 * Giving the capability to run pytest async functions.
 * Providing granular control over Concurrency
+  
   * Specifying Async Group to control tests that can run together. 
   * Specifying Timeout to avoid async tests taking forever. (Under Construction)
+
 * Compatible with ``pytest-asyncio``.
 
 Installation
