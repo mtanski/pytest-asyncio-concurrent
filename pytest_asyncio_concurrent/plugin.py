@@ -66,8 +66,6 @@ MakeItemResult = Union[
 def pytest_pycollect_makeitem_make_group_and_member(
     collector: pytest.Collector, name: str, obj: object
 ) -> Generator[None, MakeItemResult, MakeItemResult]:
-    known_groups = collector.config.stash[asyncio_concurrent_group_key]
-
     ori_result = yield
     if ori_result is None:
         return None
@@ -84,17 +82,28 @@ def pytest_pycollect_makeitem_make_group_and_member(
             continue
 
         item = item_or_collector
-        group_name = _get_asyncio_concurrent_group(item)
-        if group_name not in known_groups:
-            known_groups[group_name] = AsyncioConcurrentGroup.from_parent(
-                parent=item.parent, originalname=f"AsyncioConcurrentGroup[{group_name}]"
-            )
-        group = known_groups[group_name]
 
-        item = group.add_child(item)
+        item = AsyncioConcurrentGroupMember.promote_from_function(item)
         result.append(item)
 
     return result
+
+
+@pytest.hookimpl(specname="pytest_itemcollected")
+def pytest_itemcollected_register_in_group(item: pytest.Item) -> None:
+    if not isinstance(item, AsyncioConcurrentGroupMember):
+        return
+
+    known_groups = item.config.stash[asyncio_concurrent_group_key]
+
+    group_name = _get_asyncio_concurrent_group(item)
+    if group_name not in known_groups:
+        known_groups[group_name] = AsyncioConcurrentGroup.from_parent(
+            parent=item.parent, originalname=f"AsyncioConcurrentGroup[{group_name}]"
+        )
+    group = known_groups[group_name]
+
+    group.add_child(item)
 
 
 # =========================== # deselect # =========================== #

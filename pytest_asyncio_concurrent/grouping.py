@@ -57,7 +57,7 @@ class AsyncioConcurrentGroup(pytest.Function):
     def setup(self) -> None:
         pass
 
-    def add_child(self, item: pytest.Function) -> "AsyncioConcurrentGroupMember":
+    def add_child(self, item: "AsyncioConcurrentGroupMember") -> None:
         child_parent = list(item.iter_parents())[1]
 
         if child_parent is not self.parent:
@@ -68,10 +68,9 @@ class AsyncioConcurrentGroup(pytest.Function):
         if not self.children_have_same_parent:
             item.add_marker("skip")
 
-        member = AsyncioConcurrentGroupMember.promote_from_function(item, self)
-        self.children.append(member)
-        self.children_finalizer[member] = []
-        return member
+        item.group = self
+        self.children.append(item)
+        self.children_finalizer[item] = []
 
     def teardown_child(self, item: "AsyncioConcurrentGroupMember") -> None:
         finalizers = self.children_finalizer.pop(item)
@@ -107,9 +106,7 @@ class AsyncioConcurrentGroupMember(pytest.Function):
     _inner: pytest.Function
 
     @staticmethod
-    def promote_from_function(
-        item: pytest.Function, group: AsyncioConcurrentGroup
-    ) -> "AsyncioConcurrentGroupMember":
+    def promote_from_function(item: pytest.Function) -> "AsyncioConcurrentGroupMember":
         AsyncioConcurrentGroupMember._rewrite_function_scoped_fixture(item)
         member = AsyncioConcurrentGroupMember.from_parent(
             name=item.name,
@@ -121,7 +118,6 @@ class AsyncioConcurrentGroupMember(pytest.Function):
             originalname=item.originalname,
         )
 
-        member.group = group
         member._inner = item
         return member
 
