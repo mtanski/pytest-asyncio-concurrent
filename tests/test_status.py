@@ -218,8 +218,8 @@ def test_teardown_error(pytester: pytest.Pytester):
 def test_cmd_select(pytester: pytest.Pytester):
     """Make sure group with same group exceuted together."""
 
-    pytester.makepyfile(test_dummy=
-        dedent(
+    pytester.makepyfile(
+        test_dummy=dedent(
             """\
             import asyncio
             import pytest
