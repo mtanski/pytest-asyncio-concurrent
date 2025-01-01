@@ -31,11 +31,11 @@ Note: This plugin would more or less `Break Test Isolation Principle` \(for none
 Key Features
 ------------
 
-- Giving the capability to run pytest async functions.
-- Providing granular control over Concurrency
-  - Specifying Async Group to control tests that can run together. 
-  - Specifying Timeout to avoid async tests taking forever. (Under Construction)
-- Compatible with ``pytest-asyncio``.
+* Giving the capability to run pytest async functions.
+* Providing granular control over Concurrency
+  * Specifying Async Group to control tests that can run together. 
+  * Specifying Timeout to avoid async tests taking forever. (Under Construction)
+* Compatible with ``pytest-asyncio``.
 
 Installation
 ------------
@@ -43,6 +43,18 @@ Installation
 You can install "pytest-asyncio-concurrent" via `pip` from `PyPI`::
 
     $ pip install pytest-asyncio-concurrent
+
+
+How this work?
+-----
+
+This plugin extend ``pytest_runtestloop`` hook to handle async tests seperately.
+
+In the 'async loop', tests are grouped by the `group` provided in the mark. and executed one group at a time.
+
+In each group, instead of sequentially calling ``setup``, ``call``, ``teardown`` for individual test, these hooks are called for all tests in the group in batch.
+
+The fixture lifecycle within group is handled by this plugin instead of pytest core, to work around pytest sequential test execution assumption.
 
 
 Usage
