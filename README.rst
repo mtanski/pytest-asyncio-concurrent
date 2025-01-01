@@ -48,7 +48,7 @@ You can install "pytest-asyncio-concurrent" via `pip` from `PyPI`::
 
 
 How this work?
------
+--------------
 
 This plugin extend ``pytest_runtestloop`` hook to handle async tests seperately.
 
