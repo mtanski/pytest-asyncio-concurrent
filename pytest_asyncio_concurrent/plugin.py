@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import inspect
 import uuid
 import warnings
@@ -187,37 +188,27 @@ def pytest_runtest_protocol_async_group(
             )
         )
 
-    children_passed_setup: List[pytest.Function] = []
+    item_passed_setup: List[AsyncioConcurrentGroupMember] = []
+    coros: List[Coroutine] = []
+    loop = asyncio.get_event_loop()
 
     for childFunc in group.children:
         childFunc.ihook.pytest_runtest_logstart(
             nodeid=childFunc.nodeid, location=childFunc.location
         )
 
-    for childFunc in group.children:
-        # bundle group setup with test setup until it pass
-        # (which should either pass on first item, or fail all the way till end)
-        report = _call_and_report(
-            _setup_child(childFunc, with_group=(not group.has_setup)), childFunc, "setup"
-        )
+        report = _call_and_report(_setup_child(childFunc), childFunc, "setup")
+        if report.passed:
+            item_passed_setup.append(childFunc)
 
-        if report.passed and group.has_setup:
-            children_passed_setup.append(childFunc)
-            continue
+    for childFunc in item_passed_setup:
+        coros.append(_call_and_report_runtest_async(childFunc, nextgroup))
 
-    _pytest_runtest_call_and_report_async_group(children_passed_setup)
-
-    for i, childFunc in enumerate(group.children):
-        # teardown group with the last test.
-        _call_and_report(
-            _teardown_child(
-                childFunc, nextgroup=nextgroup, with_group=(i == len(group.children) - 1)
-            ),
-            childFunc,
-            "teardown",
-        )
+    loop.run_until_complete(asyncio.gather(*coros))
 
     for childFunc in group.children:
+        _call_and_report(_teardown_child(childFunc, nextgroup=nextgroup), childFunc, "teardown")
+
         childFunc.ihook.pytest_runtest_logfinish(
             nodeid=childFunc.nodeid, location=childFunc.location
         )
@@ -225,29 +216,17 @@ def pytest_runtest_protocol_async_group(
     return True
 
 
-def _pytest_runtest_call_and_report_async_group(items: List[pytest.Function]) -> None:
-    def hook_invoker(item: pytest.Function) -> Callable[[], Coroutine]:
-        def inner() -> Coroutine:
-            return childFunc.ihook.pytest_runtest_call_async(item=item)
-
-        return inner
-
-    coros: List[Coroutine] = []
-    loop = asyncio.get_event_loop()
-
-    for childFunc in items:
-        coros.append(_async_callinfo_from_call(hook_invoker(childFunc)))
-
-    call_result = loop.run_until_complete(asyncio.gather(*coros))
-
-    for childFunc, call in zip(items, call_result):
-        report = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=call)
-        childFunc.ihook.pytest_runtest_logreport(report=report)
+async def _call_and_report_runtest_async(
+    item: AsyncioConcurrentGroupMember, nextgroup: Optional[AsyncioConcurrentGroup]
+) -> None:
+    callinfo = await _async_callinfo_from_call(
+        functools.partial(item.ihook.pytest_runtest_call_async, item=item)  # type: ignore
+    )
+    report = item.ihook.pytest_runtest_makereport(item=item, call=callinfo)
+    item.ihook.pytest_runtest_logreport(report=report)
 
 
-def _setup_child(
-    item: AsyncioConcurrentGroupMember, with_group: bool = False
-) -> Callable[[], None]:
+def _setup_child(item: AsyncioConcurrentGroupMember) -> Callable[[], None]:
     """
     Setup flow for normal pytest tests:
     - Push all nodes onto `SetupState`, start from furthest.
@@ -263,7 +242,7 @@ def _setup_child(
     """
 
     def inner() -> None:
-        if with_group:
+        if not item.group.has_setup:
             item.ihook.pytest_runtest_setup_async_group(item=item.group)
 
         item.config.pluginmanager.subset_hook_caller(
@@ -276,7 +255,6 @@ def _setup_child(
 def _teardown_child(
     item: AsyncioConcurrentGroupMember,
     nextgroup: Optional[AsyncioConcurrentGroup],
-    with_group: bool = False,
 ) -> Callable[[], None]:
     """
     Similar to setup.
@@ -300,7 +278,7 @@ def _teardown_child(
             exceptions.append(e)
 
         try:
-            if with_group:
+            if len(item.group.children_finalizer) == 0:
                 item.ihook.pytest_runtest_teardown_async_group(item=item.group, nextitem=nextgroup)
         except Exception as e:
             if isinstance(e, BaseExceptionGroup):
