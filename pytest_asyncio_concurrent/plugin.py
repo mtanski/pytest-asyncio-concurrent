@@ -202,7 +202,7 @@ def pytest_runtest_protocol_async_group(
             item_passed_setup.append(childFunc)
 
     for childFunc in item_passed_setup:
-        coros.append(_pytest_runtest_protocal_async(childFunc, nextgroup))
+        coros.append(_call_and_report_runtest_async(childFunc, nextgroup))
 
     loop.run_until_complete(asyncio.gather(*coros))
 
@@ -216,7 +216,7 @@ def pytest_runtest_protocol_async_group(
     return True
 
 
-async def _pytest_runtest_protocal_async(
+async def _call_and_report_runtest_async(
     item: AsyncioConcurrentGroupMember, nextgroup: Optional[AsyncioConcurrentGroup]
 ) -> None:
     callinfo = await _async_callinfo_from_call(
