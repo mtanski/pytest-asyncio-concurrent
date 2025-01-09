@@ -17,7 +17,7 @@ from typing import (
     Dict,
     Sequence,
     Union,
-    ContextManager
+    ContextManager,
 )
 
 from pluggy import HookCaller, PluginManager
@@ -372,41 +372,43 @@ def pytest_runtest_protocol_async_group_warning(
     with_pytest_runtest_protocol_warning = _with_specific_hook_wrapped(
         group.ihook.pytest_runtest_protocol, "warnings"
     )
-    
+
     if with_pytest_runtest_protocol_warning:
         with with_pytest_runtest_protocol_warning(item=group, nextitem=nextgroup):
-            result = (yield)
-        
+            result = yield
+
         return result
-    
+
     return (yield)
+
 
 @pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
 def pytest_runtest_call_async_logging(item: pytest.Item) -> Generator[None, object, object]:
     with_pytest_runtest_call_logging = _with_specific_hook_wrapped(
         item.ihook.pytest_runtest_call, "logging"
     )
-    
+
     if with_pytest_runtest_call_logging:
         with with_pytest_runtest_call_logging(item=item):
-            result = (yield)
-        
+            result = yield
+
         return result
-    
+
     return (yield)
+
 
 @pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
 def pytest_runtest_call_async_capture(item: pytest.Item) -> Generator[None, object, object]:
     with_pytest_runtest_call_capture = _with_specific_hook_wrapped(
         item.ihook.pytest_runtest_call, "capture"
     )
-    
+
     if with_pytest_runtest_call_capture:
         with with_pytest_runtest_call_capture(item=item):
-            result = (yield)
-        
+            result = yield
+
         return result
-    
+
     return (yield)
 
 
@@ -480,14 +482,14 @@ def _call_and_report(
 
 
 def _with_specific_hook_wrapped(
-    hook: HookCaller, 
-    plugin: str, 
+    hook: HookCaller,
+    plugin: str,
 ) -> Optional[Callable[..., ContextManager]]:
     try:
         hookimpl = next(h for h in hook.get_hookimpls() if h.plugin_name == plugin)
     except StopIteration:
         return None
-        
+
     @contextlib.contextmanager
     def cm(**kwargs: Dict) -> Generator:
         gen = hookimpl.function(**{k: v for k, v in kwargs.items() if k in hookimpl.argnames})
@@ -497,5 +499,5 @@ def _with_specific_hook_wrapped(
             next(gen)  # type: ignore
         except StopIteration:
             pass
-    
+
     return cm
