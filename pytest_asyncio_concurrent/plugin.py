@@ -4,6 +4,7 @@ import inspect
 import uuid
 import warnings
 import sys
+import contextlib
 
 from typing import (
     Any,
@@ -16,12 +17,13 @@ from typing import (
     Dict,
     Sequence,
     Union,
+    ContextManager
 )
 
+from pluggy import HookCaller, PluginManager
 import pytest
 from _pytest import timing
 from _pytest import outcomes
-from _pytest import warnings as pytest_warnings
 
 from .grouping import (
     AsyncioConcurrentGroup,
@@ -202,7 +204,7 @@ def pytest_runtest_protocol_async_group(
             item_passed_setup.append(childFunc)
 
     for childFunc in item_passed_setup:
-        coros.append(_call_and_report_runtest_async(childFunc, nextgroup))
+        coros.append(_call_and_report_runtest_async(childFunc))
 
     loop.run_until_complete(asyncio.gather(*coros))
 
@@ -216,9 +218,7 @@ def pytest_runtest_protocol_async_group(
     return True
 
 
-async def _call_and_report_runtest_async(
-    item: AsyncioConcurrentGroupMember, nextgroup: Optional[AsyncioConcurrentGroup]
-) -> None:
+async def _call_and_report_runtest_async(item: AsyncioConcurrentGroupMember) -> None:
     callinfo = await _async_callinfo_from_call(
         functools.partial(item.ihook.pytest_runtest_call_async, item=item)  # type: ignore
     )
@@ -362,18 +362,52 @@ def pytest_runtest_teardown_handle_async_function(
     item.group.teardown_child(item)
 
 
-# =========================== # warnings #===========================#
+# =========================== # Captures #===========================#
 
 
 @pytest.hookimpl(specname="pytest_runtest_protocol_async_group", wrapper=True, tryfirst=True)
 def pytest_runtest_protocol_async_group_warning(
     group: "AsyncioConcurrentGroup", nextgroup: Optional["AsyncioConcurrentGroup"]
 ) -> Generator[None, object, object]:
-    config = group.children[0].config
-    with pytest_warnings.catch_warnings_for_item(
-        config=config, ihook=group.children[0].ihook, when="runtest", item=None
-    ):
-        return (yield)
+    with_pytest_runtest_protocol_warning = _with_specific_hook_wrapped(
+        group.ihook.pytest_runtest_protocol, "warnings"
+    )
+    
+    if with_pytest_runtest_protocol_warning:
+        with with_pytest_runtest_protocol_warning(item=group, nextitem=nextgroup):
+            result = (yield)
+        
+        return result
+    
+    return (yield)
+
+@pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
+def pytest_runtest_call_async_logging(item: pytest.Item) -> Generator[None, object, object]:
+    with_pytest_runtest_call_logging = _with_specific_hook_wrapped(
+        item.ihook.pytest_runtest_call, "logging"
+    )
+    
+    if with_pytest_runtest_call_logging:
+        with with_pytest_runtest_call_logging(item=item):
+            result = (yield)
+        
+        return result
+    
+    return (yield)
+
+@pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
+def pytest_runtest_call_async_capture(item: pytest.Item) -> Generator[None, object, object]:
+    with_pytest_runtest_call_capture = _with_specific_hook_wrapped(
+        item.ihook.pytest_runtest_call, "capture"
+    )
+    
+    if with_pytest_runtest_call_capture:
+        with with_pytest_runtest_call_capture(item=item):
+            result = (yield)
+        
+        return result
+    
+    return (yield)
 
 
 # =========================== # helper #===========================#
@@ -443,3 +477,25 @@ def _call_and_report(
     ):
         item.ihook.pytest_exception_interact(node=item, call=call, report=report)
     return report
+
+
+def _with_specific_hook_wrapped(
+    hook: HookCaller, 
+    plugin: str, 
+) -> Optional[Callable[..., ContextManager]]:
+    try:
+        hookimpl = next(h for h in hook.get_hookimpls() if h.plugin_name == plugin)
+    except StopIteration:
+        return None
+        
+    @contextlib.contextmanager
+    def cm(**kwargs: Dict) -> Generator:
+        gen = hookimpl.function(**{k: v for k, v in kwargs.items() if k in hookimpl.argnames})
+        next(gen)  # type: ignore
+        yield
+        try:
+            next(gen)  # type: ignore
+        except StopIteration:
+            pass
+    
+    return cm
