@@ -385,7 +385,7 @@ def pytest_runtest_protocol_async_group_warning(
 @pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
 def pytest_runtest_call_async_logging(item: pytest.Item) -> Generator[None, object, object]:
     with_pytest_runtest_call_logging = _with_specific_hook_wrapped(
-        item.ihook.pytest_runtest_call, "logging"
+        item.ihook.pytest_runtest_call, "logging-plugin"
     )
 
     if with_pytest_runtest_call_logging:
@@ -400,7 +400,7 @@ def pytest_runtest_call_async_logging(item: pytest.Item) -> Generator[None, obje
 @pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
 def pytest_runtest_call_async_capture(item: pytest.Item) -> Generator[None, object, object]:
     with_pytest_runtest_call_capture = _with_specific_hook_wrapped(
-        item.ihook.pytest_runtest_call, "capture"
+        item.ihook.pytest_runtest_call, "capturemanager"
     )
 
     if with_pytest_runtest_call_capture:
