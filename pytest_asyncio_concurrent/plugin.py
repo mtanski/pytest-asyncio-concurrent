@@ -20,7 +20,7 @@ from typing import (
     ContextManager,
 )
 
-from pluggy import HookCaller, PluginManager
+import pluggy
 import pytest
 from _pytest import timing
 from _pytest import outcomes
@@ -482,7 +482,7 @@ def _call_and_report(
 
 
 def _with_specific_hook_wrapped(
-    hook: HookCaller,
+    hook: pluggy.HookCaller,
     plugin: str,
 ) -> Optional[Callable[..., ContextManager]]:
     try:
