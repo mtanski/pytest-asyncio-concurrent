@@ -219,8 +219,13 @@ def pytest_runtest_protocol_async_group(
 
 
 async def _call_and_report_runtest_async(item: AsyncioConcurrentGroupMember) -> None:
+    mark = _get_asyncio_concurrent_mark(item)
+    assert mark
+    timeout = mark.kwargs.get("timeout")
+
     callinfo = await _async_callinfo_from_call(
-        functools.partial(item.ihook.pytest_runtest_call_async, item=item)  # type: ignore
+        functools.partial(item.ihook.pytest_runtest_call_async, item=item),  # type: ignore
+        timeout=timeout,
     )
     report = item.ihook.pytest_runtest_makereport(item=item, call=callinfo)
     item.ihook.pytest_runtest_logreport(report=report)
@@ -427,14 +432,16 @@ def _get_asyncio_concurrent_group(item: pytest.Item) -> str:
 
 
 # referencing CallInfo.from_call
-async def _async_callinfo_from_call(func: Callable[[], Coroutine]) -> pytest.CallInfo:
+async def _async_callinfo_from_call(
+    func: Callable[[], Coroutine], timeout: Optional[int]
+) -> pytest.CallInfo:
     """An async version of CallInfo.from_call"""
 
     excinfo = None
     start = timing.time()
     precise_start = timing.perf_counter()
     try:
-        result = await func()
+        result = await asyncio.wait_for(func(), timeout=timeout)
     except BaseException:
         excinfo = pytest.ExceptionInfo.from_current()
         if isinstance(excinfo.value, outcomes.Exit) or isinstance(excinfo.value, KeyboardInterrupt):
