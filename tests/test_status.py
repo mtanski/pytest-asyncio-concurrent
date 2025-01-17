@@ -238,3 +238,51 @@ def test_cmd_select(pytester: pytest.Pytester):
     result = pytester.runpytest("test_dummy.py::test_cmd_select_A")
 
     result.assert_outcomes(passed=1)
+
+
+def test_timeout_seperate(pytester: pytest.Pytester):
+    """Make sure tests got skipped if synced tests got marked"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.mark.asyncio_concurrent(timeout=0.2)
+            async def test_timeout_seperateA():
+                await asycio.sleep(0.3)
+
+            @pytest.mark.asyncio_concurrent(timeout=0.1)
+            async def test_timeout_seperateB():
+                await asycio.sleep(0.2)
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(failed=2)
+
+
+def test_timeout_concurrent(pytester: pytest.Pytester):
+    """Make sure tests got skipped if synced tests got marked"""
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.mark.asyncio_concurrent(group="a", timeout=0.2)
+            async def test_timeout_concurrentA():
+                await asycio.sleep(0.3)
+
+            @pytest.mark.asyncio_concurrent(group="a", timeout=0.1)
+            async def test_timeout_concurrentB():
+                await asycio.sleep(0.2)
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(failed=2)
