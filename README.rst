@@ -35,7 +35,7 @@ Key Features
 * Providing granular control over Concurrency
   
   * Specifying Async Group to control tests that can run together. 
-  * Specifying Timeout to avoid async tests taking forever. (Under Construction)
+  * Specifying Timeout to avoid async tests taking forever.
 
 * Compatible with ``pytest-asyncio``.
 
@@ -93,7 +93,8 @@ Run tests Concurrently
         res = await wait_for_something_async()
         assert result.is_valid()
 
-    @pytest.mark.asyncio_concurrent(group="my_group")
+    # this one will have a 10s timeout
+    @pytest.mark.asyncio_concurrent(group="my_group", timeout=10)
     async def test_groupB():
         res = await wait_for_something_async()
         assert result.is_valid()
