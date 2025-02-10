@@ -203,7 +203,7 @@ def pytest_runtest_protocol_async_group(
 
     coros = [_call_runtest_async(childFunc) for childFunc in item_passed_setup]
     callinfos = loop.run_until_complete(asyncio.gather(*coros))
-    
+
     for childFunc, callinfo in zip(item_passed_setup, callinfos):
         report = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=callinfo)
         childFunc.ihook.pytest_runtest_logreport(report=report)
@@ -227,7 +227,6 @@ async def _call_runtest_async(item: AsyncioConcurrentGroupMember) -> pytest.Call
         functools.partial(item.ihook.pytest_runtest_call_async, item=item),  # type: ignore
         timeout=timeout,
     )
-
 
 
 def _setup_child(item: AsyncioConcurrentGroupMember) -> Callable[[], None]:
@@ -313,9 +312,7 @@ async def pytest_runtest_call_async(item: pytest.Function) -> object:
 
         pytest.skip("Marking a sync function with @asyncio_concurrent is invalid.")
 
-    with hook_wrapper_entered(
-        item.ihook.pytest_runtest_call, item=item
-    ):
+    with hook_wrapper_entered(item.ihook.pytest_runtest_call, item=item):
         testfunction = item.obj
         testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
         return await testfunction(**testargs)
@@ -376,9 +373,7 @@ def pytest_runtest_teardown_handle_async_function(
 def pytest_runtest_protocol_async_group_warning(
     group: "AsyncioConcurrentGroup", nextgroup: Optional["AsyncioConcurrentGroup"]
 ) -> Generator[None, object, object]:
-    with hook_wrapper_entered(
-        group.ihook.pytest_runtest_protocol, item=group, nextitem=nextgroup
-    ):
+    with hook_wrapper_entered(group.ihook.pytest_runtest_protocol, item=group, nextitem=nextgroup):
         return (yield)
 
 
@@ -466,9 +461,10 @@ def hook_wrapper_entered(
         for hookimpl in hook.get_hookimpls():
             if not hookimpl.wrapper:
                 continue
-            es.enter_context(contextlib.contextmanager(hookimpl.function)(  # type: ignore
-                **{ k : v for k, v in kwds.items() if k in hookimpl.argnames}
-            ))
-        
-        yield
+            es.enter_context(
+                contextlib.contextmanager(hookimpl.function)(  # type: ignore
+                    **{k: v for k, v in kwds.items() if k in hookimpl.argnames}
+                )
+            )
 
+        yield
