@@ -10,6 +10,7 @@ def pytester_add_ini(pytester: pytest.Pytester) -> Generator[None, None, None]:
         """
         [pytest]
         asyncio_default_fixture_loop_scope=function
+        addopts = -p no:sugar
         """
     )
     yield

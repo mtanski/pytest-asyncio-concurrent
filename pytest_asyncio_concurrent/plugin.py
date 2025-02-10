@@ -17,7 +17,6 @@ from typing import (
     Dict,
     Sequence,
     Union,
-    ContextManager,
 )
 
 import pluggy
@@ -169,11 +168,11 @@ def pytest_runtest_protocol_async_group(
 
     Hooks order:
     - pytest_runtest_logstart (batch)
-    - pytest_runtest_setup_async_group (bank reporting under tests)
+    - pytest_runtest_setup_async_group (reporting under first tests)
     - pytest_runtest_setup (batch) (and reporting)
     - pytest_runtest_call_async (batch) (and reporting)
     - pytest_runtest_teardown (batch) (and reporting)
-    - pytest_runtest_teardown_async_group (bank reporting under tests)
+    - pytest_runtest_teardown_async_group (reporting under last tests)
     - pytest_runtest_logfinish (batch)
     """
 
@@ -191,7 +190,6 @@ def pytest_runtest_protocol_async_group(
         )
 
     item_passed_setup: List[AsyncioConcurrentGroupMember] = []
-    coros: List[Coroutine] = []
     loop = asyncio.get_event_loop()
 
     for childFunc in group.children:
@@ -203,10 +201,12 @@ def pytest_runtest_protocol_async_group(
         if report.passed:
             item_passed_setup.append(childFunc)
 
-    for childFunc in item_passed_setup:
-        coros.append(_call_and_report_runtest_async(childFunc))
-
-    loop.run_until_complete(asyncio.gather(*coros))
+    coros = [_call_runtest_async(childFunc) for childFunc in item_passed_setup]
+    callinfos = loop.run_until_complete(asyncio.gather(*coros))
+    
+    for childFunc, callinfo in zip(item_passed_setup, callinfos):
+        report = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=callinfo)
+        childFunc.ihook.pytest_runtest_logreport(report=report)
 
     for childFunc in group.children:
         _call_and_report(_teardown_child(childFunc, nextgroup=nextgroup), childFunc, "teardown")
@@ -218,17 +218,16 @@ def pytest_runtest_protocol_async_group(
     return True
 
 
-async def _call_and_report_runtest_async(item: AsyncioConcurrentGroupMember) -> None:
+async def _call_runtest_async(item: AsyncioConcurrentGroupMember) -> pytest.CallInfo:
     mark = _get_asyncio_concurrent_mark(item)
     assert mark
     timeout = mark.kwargs.get("timeout")
 
-    callinfo = await _async_callinfo_from_call(
+    return await _async_callinfo_from_call(
         functools.partial(item.ihook.pytest_runtest_call_async, item=item),  # type: ignore
         timeout=timeout,
     )
-    report = item.ihook.pytest_runtest_makereport(item=item, call=callinfo)
-    item.ihook.pytest_runtest_logreport(report=report)
+
 
 
 def _setup_child(item: AsyncioConcurrentGroupMember) -> Callable[[], None]:
@@ -314,9 +313,12 @@ async def pytest_runtest_call_async(item: pytest.Function) -> object:
 
         pytest.skip("Marking a sync function with @asyncio_concurrent is invalid.")
 
-    testfunction = item.obj
-    testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
-    return await testfunction(**testargs)
+    with hook_wrapper_entered(
+        item.ihook.pytest_runtest_call, item=item
+    ):
+        testfunction = item.obj
+        testargs = {arg: item.funcargs[arg] for arg in item._fixtureinfo.argnames}
+        return await testfunction(**testargs)
 
 
 @pytest.hookimpl(specname="pytest_runtest_setup_async_group")
@@ -374,47 +376,10 @@ def pytest_runtest_teardown_handle_async_function(
 def pytest_runtest_protocol_async_group_warning(
     group: "AsyncioConcurrentGroup", nextgroup: Optional["AsyncioConcurrentGroup"]
 ) -> Generator[None, object, object]:
-    with_pytest_runtest_protocol_warning = _with_specific_hook_wrapped(
-        group.ihook.pytest_runtest_protocol, "warnings"
-    )
-
-    if with_pytest_runtest_protocol_warning:
-        with with_pytest_runtest_protocol_warning(item=group, nextitem=nextgroup):
-            result = yield
-
-        return result
-
-    return (yield)
-
-
-@pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
-def pytest_runtest_call_async_logging(item: pytest.Item) -> Generator[None, object, object]:
-    with_pytest_runtest_call_logging = _with_specific_hook_wrapped(
-        item.ihook.pytest_runtest_call, "logging-plugin"
-    )
-
-    if with_pytest_runtest_call_logging:
-        with with_pytest_runtest_call_logging(item=item):
-            result = yield
-
-        return result
-
-    return (yield)
-
-
-@pytest.hookimpl(specname="pytest_runtest_call_async", wrapper=True, tryfirst=True)
-def pytest_runtest_call_async_capture(item: pytest.Item) -> Generator[None, object, object]:
-    with_pytest_runtest_call_capture = _with_specific_hook_wrapped(
-        item.ihook.pytest_runtest_call, "capturemanager"
-    )
-
-    if with_pytest_runtest_call_capture:
-        with with_pytest_runtest_call_capture(item=item):
-            result = yield
-
-        return result
-
-    return (yield)
+    with hook_wrapper_entered(
+        group.ihook.pytest_runtest_protocol, item=group, nextitem=nextgroup
+    ):
+        return (yield)
 
 
 # =========================== # helper #===========================#
@@ -488,23 +453,22 @@ def _call_and_report(
     return report
 
 
-def _with_specific_hook_wrapped(
+@contextlib.contextmanager
+def hook_wrapper_entered(
     hook: pluggy.HookCaller,
-    plugin: str,
-) -> Optional[Callable[..., ContextManager]]:
-    try:
-        hookimpl = next(h for h in hook.get_hookimpls() if h.plugin_name == plugin)
-    except StopIteration:
-        return None
-
-    @contextlib.contextmanager
-    def cm(**kwargs: Dict) -> Generator:
-        gen = hookimpl.function(**{k: v for k, v in kwargs.items() if k in hookimpl.argnames})
-        next(gen)  # type: ignore
+    **kwds: Any,
+) -> Generator[None, None, Any]:
+    """
+    # Capture and logging are hard to handle without duplicating huge amount of code,
+    # so reusing defined hooks wrapper here.
+    """
+    with contextlib.ExitStack() as es:
+        for hookimpl in hook.get_hookimpls():
+            if not hookimpl.wrapper:
+                continue
+            es.enter_context(contextlib.contextmanager(hookimpl.function)(  # type: ignore
+                **{ k : v for k, v in kwds.items() if k in hookimpl.argnames}
+            ))
+        
         yield
-        try:
-            next(gen)  # type: ignore
-        except StopIteration:
-            pass
 
-    return cm
