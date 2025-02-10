@@ -11,7 +11,7 @@ def test_log(pytester: pytest.Pytester):
             import asyncio
             import pytest
             import logging
-            
+
             logger = logging.getLogger(__name__)
 
             @pytest.mark.parametrize("p", [0, 1, 2, 3, 4])
