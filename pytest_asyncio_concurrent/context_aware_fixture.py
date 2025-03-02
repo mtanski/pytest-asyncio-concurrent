@@ -1,0 +1,128 @@
+import functools
+import inspect
+from typing import Any, Callable, Dict, Generator, Generic, Iterable, Literal, ParamSpec, TypeVar, cast, overload
+
+import pytest
+
+
+_ScopeName = Literal["session", "package", "module", "class", "function"]
+_R = TypeVar("_R")
+_P = ParamSpec("_P")
+FixtureFunction = Callable[_P, _R]
+
+@overload
+def context_aware_fixture(
+    fixture_function: FixtureFunction[_P, _R],
+    *,
+    scope: _ScopeName | Callable[[str, pytest.Config], _ScopeName] = ...,
+    params: Iterable[object] | None = ...,
+    autouse: bool = ...,
+    ids: (
+        Iterable[str | float | int | bool | None]
+        | Callable[[Any], object | None]
+        | None
+    ) = ...,
+    name: str | None = ...,
+) -> FixtureFunction[_P, _R]: ...
+
+
+@overload
+def context_aware_fixture(
+    fixture_function: None = ...,
+    *,
+    scope: _ScopeName | Callable[[str, pytest.Config], _ScopeName] = ...,
+    params: Iterable[object] | None = ...,
+    autouse: bool = ...,
+    ids: (
+        Iterable[str | float | int | bool | None]
+        | Callable[[Any], object | None]
+        | None
+    ) = ...,
+    name: str | None = None,
+) -> Callable[[FixtureFunction[_P, _R]], FixtureFunction[_P, _R]]: ...
+
+
+def context_aware_fixture(
+    fixture_function: FixtureFunction[_P, _R] | None = None,
+    **kwargs: Any,
+) -> (
+    FixtureFunction[_P, _R]
+    | Callable[[FixtureFunction[_P, _R]], FixtureFunction[_P, _R]]
+):
+    if fixture_function is not None:
+        _mark_function_context_aware(fixture_function)
+        return pytest.fixture(fixture_function, **kwargs)
+    else:
+        @functools.wraps(pytest.fixture)
+        def inner(fixture_function: FixtureFunction[_P, _R]) -> FixtureFunction[_P, _R]:
+            _mark_function_context_aware(fixture_function)
+            return pytest.fixture(fixture_function, **kwargs)
+
+        return inner
+    
+def _mark_function_context_aware(obj: Any) -> None:
+    if hasattr(obj, "__func__"):
+        # instance method, check the function object
+        obj = obj.__func__
+    obj._context_aware = True
+
+
+
+class ContextAwareFixtureResult(Generic[_R]):
+    def __init__(self, fixtureFunc: Callable[[], _R], scope: _ScopeName) -> None:
+        self._fixtureFunc = fixtureFunc
+        self._scope: _ScopeName = scope
+        self._cache: Dict[pytest.Item, _R] = {}
+        
+    def request_value(self, item: pytest.Item) -> _R:
+        cache_node = self._find_cache_node(item)
+        if cache_node not in self._cache:
+            if not is_generator(self._fixtureFunc):
+                self._cache[cache_node] = self._fixtureFunc()
+            else:
+                fixtureFunc = cast(
+                    Callable[[], Generator[_R, None, None]], self._fixtureFunc
+                )
+                gen = fixtureFunc()
+                self._cache[cache_node] = next(gen)            
+                item.addfinalizer(functools.partial(_teardown_yield_fixture, gen))
+
+        return self._cache[cache_node]
+    
+    def _find_cache_node(self, item: pytest.Item) -> pytest.Item:
+        prev = item
+        for node in item.iter_parents():
+            node = cast(pytest.Item, node)
+            if not _is_scope_smaller_or_same(self._scope, _to_scope_name(node)):
+                return prev
+            prev = node
+            
+        return prev
+
+def _is_scope_smaller_or_same(scope1: _ScopeName, scope2: _ScopeName) -> bool:
+    scopes = ["session", "package", "module", "class", "function"]
+    return scopes.index(scope1) >= scopes.index(scope2)
+
+def _to_scope_name(item: pytest.Item) -> _ScopeName:
+    if isinstance(item, pytest.Function):
+        return "function"
+    elif isinstance(item, pytest.Class):
+        return "class"
+    elif isinstance(item, pytest.Module):
+        return "module"
+    elif isinstance(item, pytest.Package):
+        return "package"
+    elif isinstance(item, pytest.Session):
+        return "session"
+    else:
+        raise Exception("can not find valid scope.")
+
+
+def is_generator(func: object) -> bool:
+    return inspect.isgeneratorfunction(func) and not inspect.iscoroutinefunction(func)
+
+def _teardown_yield_fixture(it) -> None:
+    try:
+        next(it)
+    except StopIteration:
+        pass

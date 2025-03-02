@@ -107,7 +107,7 @@ class AsyncioConcurrentGroupMember(pytest.Function):
 
     @staticmethod
     def promote_from_function(item: pytest.Function) -> "AsyncioConcurrentGroupMember":
-        AsyncioConcurrentGroupMember._rewrite_function_scoped_fixture(item)
+        # AsyncioConcurrentGroupMember._rewrite_function_scoped_fixture(item)
         member = AsyncioConcurrentGroupMember.from_parent(
             name=item.name,
             parent=item.parent,
