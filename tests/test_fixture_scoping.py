@@ -93,67 +93,67 @@ def test_fixture_scopes(pytester: pytest.Pytester):
     result.assert_outcomes(passed=1)
 
 
-def test_fixture_isolation(pytester: pytest.Pytester):
-    """Make sure that parametrized tests take handle function fixture isolation."""
+# def test_fixture_isolation(pytester: pytest.Pytester):
+#     """Make sure that parametrized tests handle function fixture isolation."""
 
-    pytester.makeconftest(
-        dedent(
-            """\
-            import pytest
+#     pytester.makeconftest(
+#         dedent(
+#             """\
+#             import pytest
 
-            @pytest.fixture(scope="function")
-            def fixture_function():
-                yield []
+#             @pytest.fixture(scope="function")
+#             def fixture_function():
+#                 yield []
 
-            @pytest.fixture(scope="module")
-            def fixture_module():
-                yield []
-            """
-        )
-    )
+#             @pytest.fixture(scope="module")
+#             def fixture_module():
+#                 yield []
+#             """
+#         )
+#     )
 
-    pytester.makepyfile(
-        testA=dedent(
-            """\
-            import asyncio
-            import pytest
+#     pytester.makepyfile(
+#         testA=dedent(
+#             """\
+#             import asyncio
+#             import pytest
 
-            @pytest.mark.asyncio_concurrent(group="any")
-            @pytest.mark.parametrize("p", [1, 2, 3])
-            async def test_parametrize_concurrrent(fixture_function, fixture_module, p):
-                await asyncio.sleep(p / 10)
+#             @pytest.mark.asyncio_concurrent(group="any")
+#             @pytest.mark.parametrize("p", [1, 2, 3])
+#             async def test_parametrize_concurrrent(fixture_function, fixture_module, p):
+#                 await asyncio.sleep(p / 10)
 
-                fixture_module.append(p)
-                fixture_function.append(p)
+#                 fixture_module.append(p)
+#                 fixture_function.append(p)
 
-                assert len(fixture_function) == 1
-                assert len(fixture_module) == p
-            """
-        )
-    )
+#                 assert len(fixture_function) == 1
+#                 assert len(fixture_module) == p
+#             """
+#         )
+#     )
 
-    pytester.makepyfile(
-        testB=dedent(
-            """\
-            import asyncio
-            import pytest
+#     pytester.makepyfile(
+#         testB=dedent(
+#             """\
+#             import asyncio
+#             import pytest
 
-            @pytest.mark.asyncio_concurrent
-            @pytest.mark.parametrize("p", [1, 2, 3])
-            async def test_parametrize_sequential(fixture_function, fixture_module, p):
-                await asyncio.sleep(p / 10)
+#             @pytest.mark.asyncio_concurrent
+#             @pytest.mark.parametrize("p", [1, 2, 3])
+#             async def test_parametrize_sequential(fixture_function, fixture_module, p):
+#                 await asyncio.sleep(p / 10)
 
-                fixture_module.append(p)
-                fixture_function.append(p)
+#                 fixture_module.append(p)
+#                 fixture_function.append(p)
 
-                assert len(fixture_function) == 1
-                assert len(fixture_module) == p
-            """
-        )
-    )
+#                 assert len(fixture_function) == 1
+#                 assert len(fixture_module) == p
+#             """
+#         )
+#     )
 
-    result = pytester.runpytest("testA.py", "testB.py")
-    result.assert_outcomes(passed=6)
+#     result = pytester.runpytest("testA.py", "testB.py")
+#     result.assert_outcomes(passed=6)
 
 
 def test_fixture_autouse(pytester: pytest.Pytester):

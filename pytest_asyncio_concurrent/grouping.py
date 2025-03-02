@@ -32,7 +32,7 @@ class AsyncioConcurrentGroup(pytest.Function):
     """
 
     children: List["AsyncioConcurrentGroupMember"]
-    children_have_same_parent: bool
+    # children_have_same_parent: bool
     children_finalizer: Dict["AsyncioConcurrentGroupMember", List[Callable[[], Any]]]
     has_setup: bool
 
@@ -41,7 +41,7 @@ class AsyncioConcurrentGroup(pytest.Function):
         parent,
         originalname: str,
     ):
-        self.children_have_same_parent = True
+        # self.children_have_same_parent = True
         self.has_setup = False
         self.children = []
         self.children_finalizer = {}
@@ -58,15 +58,15 @@ class AsyncioConcurrentGroup(pytest.Function):
         pass
 
     def add_child(self, item: "AsyncioConcurrentGroupMember") -> None:
-        child_parent = list(item.iter_parents())[1]
+        # child_parent = list(item.iter_parents())[1]
 
-        if child_parent is not self.parent:
-            self.children_have_same_parent = False
-            for child in self.children:
-                child.add_marker("skip")
+        # if child_parent is not self.parent:
+        #     self.children_have_same_parent = False
+        #     for child in self.children:
+        #         child.add_marker("skip")
 
-        if not self.children_have_same_parent:
-            item.add_marker("skip")
+        # if not self.children_have_same_parent:
+        #     item.add_marker("skip")
 
         item.group = self
         self.children.append(item)

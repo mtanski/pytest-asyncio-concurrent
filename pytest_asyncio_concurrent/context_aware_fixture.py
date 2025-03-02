@@ -93,15 +93,15 @@ class ContextAwareFixtureResult(Generic[_R]):
         prev = item
         for node in item.iter_parents():
             node = cast(pytest.Item, node)
-            if not _is_scope_smaller_or_same(self._scope, _to_scope_name(node)):
+            if _is_scope_bigger(_to_scope_name(node), self._scope):
                 return prev
             prev = node
             
         return prev
 
-def _is_scope_smaller_or_same(scope1: _ScopeName, scope2: _ScopeName) -> bool:
+def _is_scope_bigger(scope1: _ScopeName, scope2: _ScopeName) -> bool:
     scopes = ["session", "package", "module", "class", "function"]
-    return scopes.index(scope1) >= scopes.index(scope2)
+    return scopes.index(scope1) < scopes.index(scope2)
 
 def _to_scope_name(item: pytest.Item) -> _ScopeName:
     if isinstance(item, pytest.Function):
@@ -110,12 +110,16 @@ def _to_scope_name(item: pytest.Item) -> _ScopeName:
         return "class"
     elif isinstance(item, pytest.Module):
         return "module"
-    elif isinstance(item, pytest.Package):
+    elif (
+        isinstance(item, pytest.Package) or 
+        isinstance(item,pytest.Dir) or 
+        isinstance(item, pytest.Directory)
+    ):
         return "package"
     elif isinstance(item, pytest.Session):
         return "session"
     else:
-        raise Exception("can not find valid scope.")
+        raise Exception(f"can not find valid scope for {item}.")
 
 
 def is_generator(func: object) -> bool:

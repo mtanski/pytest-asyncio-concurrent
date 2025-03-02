@@ -126,8 +126,9 @@ def test_function_fixture_teardown_error_repeating(pytester: pytest.Pytester):
             """\
             import asyncio
             import pytest
+            import pytest_asyncio_concurrent
 
-            @pytest.fixture(scope="function")
+            @pytest_asyncio_concurrent.context_aware_fixture(scope="function")
             def fixture_function():
                 yield
                 raise AssertionError
