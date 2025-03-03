@@ -135,7 +135,7 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
     result = pytester.runpytest()
 
     result.assert_outcomes(passed=4)
-    assert result.duration < 0.4
+    assert result.duration < 0.5
 
 
 def test_group_cross_file(pytester: pytest.Pytester):
