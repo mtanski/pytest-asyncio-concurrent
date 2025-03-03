@@ -17,7 +17,7 @@ def pytest_fixture_setup_wrap_async(
     _wrap_async_fixture(fixturedef)
     
     if is_context_aware:
-        _wrap_context_aware_fixture(fixturedef)
+        _wrap_context_aware_fixture(fixturedef, request.node)
     
     return (yield)
 
@@ -84,7 +84,7 @@ def _wrap_asyncfunc_fixture(fixturedef: pytest.FixtureDef) -> None:
 
     fixturedef.func = _async_fixture_wrapper  # type: ignore[misc]
 
-def _wrap_context_aware_fixture(fixturedef: pytest.FixtureDef) -> None:
+def _wrap_context_aware_fixture(fixturedef: pytest.FixtureDef, item: pytest.Item) -> None:
     fixtureFunc = fixturedef.func
 
     @functools.wraps(fixtureFunc)
@@ -93,8 +93,9 @@ def _wrap_context_aware_fixture(fixturedef: pytest.FixtureDef) -> None:
             functools.partial(fixtureFunc, **kwargs),
             fixturedef.scope
         )
-    
+        
     fixturedef.func = _context_aware_fixture_wrapper  # type: ignore[misc]
+    fixturedef.func._context_aware = False  # type: ignore
     
     
 def _is_context_aware_fixture(obj: Any) -> bool:

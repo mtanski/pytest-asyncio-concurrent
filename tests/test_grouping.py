@@ -136,3 +136,50 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
 
     result.assert_outcomes(passed=3)
     assert result.duration < 0.3
+
+
+def test_group_cross_file(pytester: pytest.Pytester):
+    """Make sure parametrized tests with group specified executed together"""
+
+    pytester.makepyfile(testA=dedent(
+            """\
+            import asyncio
+            import pytest
+
+            g_var = 0
+
+            @pytest.mark.parametrize("p", [0, 1, 2])
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_parametrize_cross_file_group(p):
+                global g_var
+                await asyncio.sleep(p / 10)
+
+                assert g_var == p
+                g_var += 1
+            """
+        )
+    )
+
+    pytester.makepyfile(testB=dedent(
+            """\
+            import asyncio
+            import pytest
+
+            g_var = 0
+
+            @pytest.mark.parametrize("p", [0, 1, 2])
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_parametrize_cross_file_group(p):
+                global g_var
+                await asyncio.sleep(p / 10)
+
+                assert g_var == p
+                g_var += 1
+            """
+        )
+    )
+
+    result = pytester.runpytest("testA.py", "testB.py")
+
+    result.assert_outcomes(passed=6)
+    assert result.duration < 0.3

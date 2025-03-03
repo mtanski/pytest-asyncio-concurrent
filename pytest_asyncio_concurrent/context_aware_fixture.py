@@ -77,7 +77,7 @@ class ContextAwareFixtureResult(Generic[_R]):
     def request_value(self, item: pytest.Item) -> _R:
         cache_node = self._find_cache_node(item)
         if cache_node not in self._cache:
-            if not is_generator(self._fixtureFunc):
+            if not inspect.isgeneratorfunction(self._fixtureFunc):
                 self._cache[cache_node] = self._fixtureFunc()
             else:
                 fixtureFunc = cast(
@@ -121,9 +121,6 @@ def _to_scope_name(item: pytest.Item) -> _ScopeName:
     else:
         raise Exception(f"can not find valid scope for {item}.")
 
-
-def is_generator(func: object) -> bool:
-    return inspect.isgeneratorfunction(func) and not inspect.iscoroutinefunction(func)
 
 def _teardown_yield_fixture(it) -> None:
     try:
