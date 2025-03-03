@@ -3,7 +3,7 @@ from textwrap import dedent
 import pytest
 
 
-def test_context_aware_fixture_function_isolation(pytester: pytest.Pytester):
+def test_context_aware_fixture_function_isolation_cross_file(pytester: pytest.Pytester):
     """Make sure that context_aware_fixture handle function fixture isolation."""
 
     pytester.makeconftest(
@@ -14,11 +14,11 @@ def test_context_aware_fixture_function_isolation(pytester: pytest.Pytester):
 
             @pytest_asyncio_concurrent.context_aware_fixture
             def fixture_function():
-                yield []
+                return []
 
             @pytest.fixture(scope="module")
             def fixture_module():
-                yield []
+                return []
             """
         )
     )
@@ -65,6 +65,34 @@ def test_context_aware_fixture_function_isolation(pytester: pytest.Pytester):
 
     result = pytester.runpytest("testA.py", "testB.py")
     result.assert_outcomes(passed=6)
+
+
+def test_context_aware_fixture_function_isolation(pytester: pytest.Pytester):
+    """Make sure that context_aware_fixture handle function fixture isolation."""
+    
+    pytester.makepyfile(dedent(
+            """\
+            import asyncio
+            import pytest
+            import pytest_asyncio_concurrent
+
+            class TestClass:
+                @pytest_asyncio_concurrent.context_aware_fixture
+                def fixture_function(self):
+                    return []
+
+                @pytest.mark.asyncio_concurrent(group="any")
+                @pytest.mark.parametrize("p", [1, 2, 3])
+                async def test_parametrize_concurrrent(self, fixture_function, p):
+                    await asyncio.sleep(p / 10)
+                    fixture_function.append(p)
+                    assert len(fixture_function) == 1
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=3)
 
 
 def test_context_aware_fixture_class_isolation(pytester: pytest.Pytester):
