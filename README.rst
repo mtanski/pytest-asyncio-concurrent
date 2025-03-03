@@ -41,7 +41,7 @@ Key Features
 * Use ``context_aware_fixture`` to handle fixture lifecycle.
 
 Fixture Handling
-----------
+----------------
 
 Context Aware Fixture
 *********************
