@@ -17,7 +17,7 @@ def pytest_fixture_setup_wrap_async(
     _wrap_async_fixture(fixturedef)
     
     if is_context_aware:
-        _wrap_context_aware_fixture(fixturedef, request.node)
+        _wrap_context_aware_fixture(fixturedef)
     
     return (yield)
 
@@ -84,7 +84,12 @@ def _wrap_asyncfunc_fixture(fixturedef: pytest.FixtureDef) -> None:
 
     fixturedef.func = _async_fixture_wrapper  # type: ignore[misc]
 
-def _wrap_context_aware_fixture(fixturedef: pytest.FixtureDef, item: pytest.Item) -> None:
+def _wrap_context_aware_fixture(fixturedef: pytest.FixtureDef) -> None:
+    """
+    Wraps the fixture function to replace fixture value using ContextAwareFixtureResult,
+    and value are replaced back inside pytest_runtest_setup.
+    """
+    
     fixtureFunc = fixturedef.func
 
     @functools.wraps(fixtureFunc)

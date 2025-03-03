@@ -1,18 +1,16 @@
 import functools
 import inspect
-from typing import Any, Callable, Dict, Generator, Generic, Iterable, Literal, ParamSpec, TypeVar, cast, overload
+from typing import Any, Callable, Dict, Generator, Generic, Iterable, Literal, TypeVar, cast, overload
 
 import pytest
 
 
 _ScopeName = Literal["session", "package", "module", "class", "function"]
 _R = TypeVar("_R")
-_P = ParamSpec("_P")
-FixtureFunction = Callable[_P, _R]
 
 @overload
 def context_aware_fixture(
-    fixture_function: FixtureFunction[_P, _R],
+    fixture_function: Callable[..., _R],
     *,
     scope: _ScopeName | Callable[[str, pytest.Config], _ScopeName] = ...,
     params: Iterable[object] | None = ...,
@@ -23,7 +21,7 @@ def context_aware_fixture(
         | None
     ) = ...,
     name: str | None = ...,
-) -> FixtureFunction[_P, _R]: ...
+) -> Callable[..., _R]: ...
 
 
 @overload
@@ -39,22 +37,22 @@ def context_aware_fixture(
         | None
     ) = ...,
     name: str | None = None,
-) -> Callable[[FixtureFunction[_P, _R]], FixtureFunction[_P, _R]]: ...
+) -> Callable[[Callable[..., _R]], Callable[..., _R]]: ...
 
 
 def context_aware_fixture(
-    fixture_function: FixtureFunction[_P, _R] | None = None,
+    fixture_function: Callable[..., _R] | None = None,
     **kwargs: Any,
 ) -> (
-    FixtureFunction[_P, _R]
-    | Callable[[FixtureFunction[_P, _R]], FixtureFunction[_P, _R]]
+    Callable[..., _R]
+    | Callable[[Callable[..., _R]], Callable[..., _R]]
 ):
     if fixture_function is not None:
         _mark_function_context_aware(fixture_function)
         return pytest.fixture(fixture_function, **kwargs)
     else:
         @functools.wraps(pytest.fixture)
-        def inner(fixture_function: FixtureFunction[_P, _R]) -> FixtureFunction[_P, _R]:
+        def inner(fixture_function: Callable[..., _R]) -> Callable[..., _R]:
             _mark_function_context_aware(fixture_function)
             return pytest.fixture(fixture_function, **kwargs)
 
@@ -69,6 +67,12 @@ def _mark_function_context_aware(obj: Any) -> None:
 
 
 class ContextAwareFixtureResult(Generic[_R]):
+    """
+    A class used to replace fixture return value, and handling cache behavior inside itself.
+    Based on the provided, it cache result on different level of node. So that fixture value can be handled
+    across modules, classes, and functions.
+    """
+    
     def __init__(self, fixtureFunc: Callable[[], _R], scope: _ScopeName) -> None:
         self._fixtureFunc = fixtureFunc
         self._scope: _ScopeName = scope
