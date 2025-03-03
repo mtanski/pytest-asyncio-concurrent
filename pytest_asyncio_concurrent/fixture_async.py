@@ -12,14 +12,15 @@ from .context_aware_fixture import ContextAwareFixtureResult
 @pytest.hookimpl(specname="pytest_fixture_setup", wrapper=True)
 def pytest_fixture_setup_wrap_async(
     fixturedef: pytest.FixtureDef, request: pytest.FixtureRequest
-)  -> Generator[None, Any, Any]:
+) -> Generator[None, Any, Any]:
     is_context_aware = _is_context_aware_fixture(fixturedef.func)
     _wrap_async_fixture(fixturedef)
-    
+
     if is_context_aware:
         _wrap_context_aware_fixture(fixturedef)
-    
+
     return (yield)
+
 
 @pytest.hookimpl(specname="pytest_runtest_setup", wrapper=True, trylast=True)
 def pytest_runtest_setup_context_aware_fixture(item: pytest.Function) -> Generator[None, Any, Any]:
@@ -84,25 +85,23 @@ def _wrap_asyncfunc_fixture(fixturedef: pytest.FixtureDef) -> None:
 
     fixturedef.func = _async_fixture_wrapper  # type: ignore[misc]
 
+
 def _wrap_context_aware_fixture(fixturedef: pytest.FixtureDef) -> None:
     """
     Wraps the fixture function to replace fixture value using ContextAwareFixtureResult,
     and value are replaced back inside pytest_runtest_setup.
     """
-    
+
     fixtureFunc = fixturedef.func
 
     @functools.wraps(fixtureFunc)
     def _context_aware_fixture_wrapper(**kwargs: Dict[str, Any]):
-        return ContextAwareFixtureResult(
-            functools.partial(fixtureFunc, **kwargs),
-            fixturedef.scope
-        )
-        
+        return ContextAwareFixtureResult(functools.partial(fixtureFunc, **kwargs), fixturedef.scope)
+
     fixturedef.func = _context_aware_fixture_wrapper  # type: ignore[misc]
     fixturedef.func._context_aware = False  # type: ignore
-    
-    
+
+
 def _is_context_aware_fixture(obj: Any) -> bool:
     obj = getattr(obj, "__func__", obj)  # instance method maybe?
     return getattr(obj, "_context_aware", False)

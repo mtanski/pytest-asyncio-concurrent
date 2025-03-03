@@ -141,7 +141,7 @@ def test_async_gen_fixture_error(pytester: pytest.Pytester):
 
 def test_async_fixture_context_aware(pytester: pytest.Pytester):
     """Make sure that async fixture can also be context aware."""
-    
+
     pytester.makepyfile(
         testA=dedent(
             """\
@@ -163,10 +163,11 @@ def test_async_fixture_context_aware(pytester: pytest.Pytester):
             """
         )
     )
-    
+
+
 def test_async_gen_fixture_context_aware(pytester: pytest.Pytester):
     """Make sure that async generator fixture can also be context aware."""
-    
+
     pytester.makepyfile(
         testA=dedent(
             """\

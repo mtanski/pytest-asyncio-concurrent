@@ -2,6 +2,7 @@ from textwrap import dedent
 
 import pytest
 
+
 def test_context_aware_fixture_function_isolation(pytester: pytest.Pytester):
     """Make sure that context_aware_fixture handle function fixture isolation."""
 
@@ -69,7 +70,8 @@ def test_context_aware_fixture_function_isolation(pytester: pytest.Pytester):
 def test_context_aware_fixture_class_isolation(pytester: pytest.Pytester):
     """Make sure that context_aware_fixture handle class fixture isolation."""
 
-    pytester.makeconftest(dedent(
+    pytester.makeconftest(
+        dedent(
             """\
             import pytest
             import pytest_asyncio_concurrent
@@ -81,7 +83,8 @@ def test_context_aware_fixture_class_isolation(pytester: pytest.Pytester):
         )
     )
 
-    pytester.makepyfile(dedent(
+    pytester.makepyfile(
+        dedent(
             """\
             import asyncio
             import pytest
@@ -112,7 +115,8 @@ def test_context_aware_fixture_class_isolation(pytester: pytest.Pytester):
 def test_context_aware_fixture_module_isolation(pytester: pytest.Pytester):
     """Make sure that context_aware_fixture handle module fixture isolation."""
 
-    pytester.makeconftest(dedent(
+    pytester.makeconftest(
+        dedent(
             """\
             import pytest
             import pytest_asyncio_concurrent
@@ -124,7 +128,8 @@ def test_context_aware_fixture_module_isolation(pytester: pytest.Pytester):
         )
     )
 
-    pytester.makepyfile(testA=dedent(
+    pytester.makepyfile(
+        testA=dedent(
             """\
             import asyncio
             import pytest
@@ -138,8 +143,9 @@ def test_context_aware_fixture_module_isolation(pytester: pytest.Pytester):
             """
         )
     )
-    
-    pytester.makepyfile(testB=dedent(
+
+    pytester.makepyfile(
+        testB=dedent(
             """\
             import asyncio
             import pytest

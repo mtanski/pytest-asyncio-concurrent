@@ -108,4 +108,3 @@ class AsyncioConcurrentGroupMember(pytest.Function):
     def addfinalizer(self, fin: Callable[[], Any]) -> None:
         assert callable(fin)
         self.group.children_finalizer[self].append(fin)
-

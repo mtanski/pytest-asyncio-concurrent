@@ -141,7 +141,8 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
 def test_group_cross_file(pytester: pytest.Pytester):
     """Make sure parametrized tests with group specified executed together"""
 
-    pytester.makepyfile(testA=dedent(
+    pytester.makepyfile(
+        testA=dedent(
             """\
             import asyncio
             import pytest
@@ -160,7 +161,8 @@ def test_group_cross_file(pytester: pytest.Pytester):
         )
     )
 
-    pytester.makepyfile(testB=dedent(
+    pytester.makepyfile(
+        testB=dedent(
             """\
             import asyncio
             import pytest
