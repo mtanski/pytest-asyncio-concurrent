@@ -28,7 +28,6 @@ from .grouping import (
     AsyncioConcurrentGroup,
     AsyncioConcurrentGroupMember,
     PytestAsyncioConcurrentInvalidMarkWarning,
-    PytestAsyncioConcurrentGroupingWarning,
 )
 
 if sys.version_info < (3, 11):
@@ -176,18 +175,6 @@ def pytest_runtest_protocol_async_group(
     - pytest_runtest_logfinish (batch)
     """
 
-    # if not group.children_have_same_parent:
-    #     for child in group.children:
-    #         child.add_marker("skip")
-
-    #     warnings.warn(
-    #         PytestAsyncioConcurrentGroupingWarning(
-    #             f"""
-    #             Asyncio Concurrent Group [{group.name}] has children from different parents,
-    #             skipping all of it's children.
-    #             """
-    #         )
-    #     )
 
     item_passed_setup: List[AsyncioConcurrentGroupMember] = []
     loop = asyncio.get_event_loop()

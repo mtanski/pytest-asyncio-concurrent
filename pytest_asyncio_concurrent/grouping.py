@@ -9,10 +9,6 @@ if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
 
 
-class PytestAsyncioConcurrentGroupingWarning(pytest.PytestWarning):
-    """Raised when Test from different parent grouped into same group."""
-
-
 class PytestAsyncioConcurrentInvalidMarkWarning(pytest.PytestWarning):
     """Raised when Sync Test got marked."""
 
