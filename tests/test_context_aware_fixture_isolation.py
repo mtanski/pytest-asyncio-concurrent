@@ -199,3 +199,39 @@ def test_function_fixture_teardown_error_repeating(pytester: pytest.Pytester):
     result = pytester.runpytest()
 
     result.assert_outcomes(passed=3, errors=2)
+
+
+def test_function_fixture_setup_error_repeating(pytester: pytest.Pytester):
+    """
+    Make sure that error in function scoped fixture setup stage will repeat on each test.
+    """
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+            import pytest_asyncio_concurrent
+
+            @pytest_asyncio_concurrent.context_aware_fixture(scope="function")
+            def fixture_function():
+                raise AssertionError
+                yield
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_A(fixture_function):
+                pass
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_B(fixture_function):
+                pass
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_C():
+                pass
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1, errors=2)
