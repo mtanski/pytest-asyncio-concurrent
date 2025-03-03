@@ -69,8 +69,9 @@ def test_context_aware_fixture_function_isolation_cross_file(pytester: pytest.Py
 
 def test_context_aware_fixture_function_isolation(pytester: pytest.Pytester):
     """Make sure that context_aware_fixture handle function fixture isolation."""
-    
-    pytester.makepyfile(dedent(
+
+    pytester.makepyfile(
+        dedent(
             """\
             import asyncio
             import pytest
