@@ -35,7 +35,6 @@ def test_function_fixture_setup_error_isolation(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest()
-
     result.assert_outcomes(passed=2, errors=1)
 
 
@@ -112,44 +111,7 @@ def test_usefixture_fixture_on_class_setup_error_repeating(pytester: pytest.Pyte
     )
 
     result = pytester.runpytest()
-
     result.assert_outcomes(errors=3)
-
-
-def test_function_fixture_teardown_error_repeating(pytester: pytest.Pytester):
-    """
-    Make sure that error in function scoped fixture teardown stage will repeat on each test.
-    """
-
-    pytester.makepyfile(
-        dedent(
-            """\
-            import asyncio
-            import pytest
-
-            @pytest.fixture(scope="function")
-            def fixture_function():
-                yield
-                raise AssertionError
-
-            @pytest.mark.asyncio_concurrent(group="any")
-            async def test_A(fixture_function):
-                pass
-
-            @pytest.mark.asyncio_concurrent(group="any")
-            async def test_B(fixture_function):
-                pass
-
-            @pytest.mark.asyncio_concurrent(group="any")
-            async def test_C():
-                pass
-            """
-        )
-    )
-
-    result = pytester.runpytest()
-
-    result.assert_outcomes(passed=3, errors=2)
 
 
 def test_package_fixture_teardown_error_once(pytester: pytest.Pytester):

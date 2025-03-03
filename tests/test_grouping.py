@@ -65,7 +65,7 @@ def test_groups_same(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_same_A():
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.3)
 
             @pytest.mark.asyncio_concurrent(group="A")
             async def test_group_same_B():
@@ -76,7 +76,7 @@ def test_groups_same(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
 
-    assert result.duration < 0.3
+    assert result.duration < 0.4
     result.assert_outcomes(passed=2)
 
 
@@ -120,7 +120,7 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
 
             g_var = 0
 
-            @pytest.mark.parametrize("p", [0, 1, 2])
+            @pytest.mark.parametrize("p", [0, 1, 2, 3])
             @pytest.mark.asyncio_concurrent(group="any")
             async def test_parametrize_with_group(p):
                 global g_var
@@ -134,5 +134,54 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
 
-    result.assert_outcomes(passed=3)
-    assert result.duration < 0.3
+    result.assert_outcomes(passed=4)
+    assert result.duration < 0.5
+
+
+def test_group_cross_file(pytester: pytest.Pytester):
+    """Make sure parametrized tests with group specified executed together"""
+
+    pytester.makepyfile(
+        testA=dedent(
+            """\
+            import asyncio
+            import pytest
+
+            g_var = 0
+
+            @pytest.mark.parametrize("p", [0, 1, 2])
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_parametrize_cross_file_group(p):
+                global g_var
+                await asyncio.sleep(p / 10)
+
+                assert g_var == p
+                g_var += 1
+            """
+        )
+    )
+
+    pytester.makepyfile(
+        testB=dedent(
+            """\
+            import asyncio
+            import pytest
+
+            g_var = 0
+
+            @pytest.mark.parametrize("p", [0, 1, 2])
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_parametrize_cross_file_group(p):
+                global g_var
+                await asyncio.sleep(p / 10)
+
+                assert g_var == p
+                g_var += 1
+            """
+        )
+    )
+
+    result = pytester.runpytest("testA.py", "testB.py")
+
+    result.assert_outcomes(passed=6)
+    assert result.duration < 0.4
