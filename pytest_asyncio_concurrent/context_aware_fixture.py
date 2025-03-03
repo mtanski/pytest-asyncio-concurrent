@@ -77,7 +77,7 @@ def _mark_function_context_aware(obj: Any) -> None:
 class ContextAwareFixtureResult(Generic[_R]):
     """
     A class used to replace fixture return value, and handling cache behavior inside itself.
-    Based on the provided, it cache result on different level of node. So that fixture value 
+    Based on the provided, it cache result on different level of node. So that fixture value
     can be handled across modules, classes, and functions.
     """
 

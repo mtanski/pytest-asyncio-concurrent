@@ -175,7 +175,6 @@ def pytest_runtest_protocol_async_group(
     - pytest_runtest_logfinish (batch)
     """
 
-
     item_passed_setup: List[AsyncioConcurrentGroupMember] = []
     loop = asyncio.get_event_loop()
 
