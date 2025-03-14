@@ -2,7 +2,7 @@ from textwrap import dedent
 import pytest
 
 
-def test_normal_fixture_basic_handling(pytester: pytest.Pytester):
+def test_fixture_handling(pytester: pytest.Pytester):
     """Make sure that tests is taking fixture value correctly."""
 
     pytester.makeconftest(
@@ -37,10 +37,11 @@ def test_normal_fixture_basic_handling(pytester: pytest.Pytester):
     )
 
     result = pytester.runpytest()
+
     result.assert_outcomes(passed=1)
 
 
-def test_normal_fixture_scopes(pytester: pytest.Pytester):
+def test_fixture_scopes(pytester: pytest.Pytester):
     """Make sure that tests can take fixture of different scops."""
 
     pytester.makeconftest(
@@ -92,7 +93,70 @@ def test_normal_fixture_scopes(pytester: pytest.Pytester):
     result.assert_outcomes(passed=1)
 
 
-def test_normal_fixture_autouse(pytester: pytest.Pytester):
+def test_fixture_isolation(pytester: pytest.Pytester):
+    """Make sure that parametrized tests take handle function fixture isolation."""
+
+    pytester.makeconftest(
+        dedent(
+            """\
+            import pytest
+
+            @pytest.fixture(scope="function")
+            def fixture_function():
+                yield []
+
+            @pytest.fixture(scope="module")
+            def fixture_module():
+                yield []
+            """
+        )
+    )
+
+    pytester.makepyfile(
+        testA=dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            @pytest.mark.parametrize("p", [1, 2, 3])
+            async def test_parametrize_concurrrent(fixture_function, fixture_module, p):
+                await asyncio.sleep(p / 10)
+
+                fixture_module.append(p)
+                fixture_function.append(p)
+
+                assert len(fixture_function) == 1
+                assert len(fixture_module) == p
+            """
+        )
+    )
+
+    pytester.makepyfile(
+        testB=dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.mark.asyncio_concurrent
+            @pytest.mark.parametrize("p", [1, 2, 3])
+            async def test_parametrize_sequential(fixture_function, fixture_module, p):
+                await asyncio.sleep(p / 10)
+
+                fixture_module.append(p)
+                fixture_function.append(p)
+
+                assert len(fixture_function) == 1
+                assert len(fixture_module) == p
+            """
+        )
+    )
+
+    result = pytester.runpytest("testA.py", "testB.py")
+    result.assert_outcomes(passed=6)
+
+
+def test_fixture_autouse(pytester: pytest.Pytester):
     """Make sure that tests can take autouse fixture"""
 
     pytester.makepyfile(
@@ -122,7 +186,7 @@ def test_normal_fixture_autouse(pytester: pytest.Pytester):
     result.assert_outcomes(passed=1)
 
 
-def test_normal_fixture_usefixture(pytester: pytest.Pytester):
+def test_fixture_usefixture(pytester: pytest.Pytester):
     """Make sure that tests can take usefixuture fixture"""
 
     pytester.makepyfile(
@@ -131,21 +195,21 @@ def test_normal_fixture_usefixture(pytester: pytest.Pytester):
             import asyncio
             import pytest
 
-            g_var = False
+            g_var = 0
 
             @pytest.fixture
             def fixture_got_used():
                 global g_var
-                g_var = True
+                g_var = 1
                 yield
-                g_var = False
+                g_var = 0
 
             @pytest.mark.usefixtures("fixture_got_used")
             class TestDummyClass:
                 @pytest.mark.asyncio_concurrent
                 async def test_fixture_dummy(self):
                     global g_var
-                    assert g_var
+                    assert g_var == 1
             """
         )
     )
