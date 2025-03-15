@@ -151,6 +151,6 @@ class AsyncioConcurrentGroupMember(pytest.Function):
             item._fixtureinfo = dataclasses.replace(
                 item._fixtureinfo, name2fixturedefs=new_name2fixturedefs
             )
-        except TypeError: # if item._fixtureinfo no longer a dataclass
+        except TypeError:  # if item._fixtureinfo no longer a dataclass
             item._fixtureinfo = copy.copy(item._fixtureinfo)
             item._fixtureinfo.name2fixturedefs = new_name2fixturedefs  # type: ignore
