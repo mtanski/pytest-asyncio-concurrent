@@ -295,3 +295,49 @@ def test_parametrized_fixture(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=2)
+
+
+def test_dynamic_fixture_isolation(pytester: pytest.Pytester):
+    """Make sure that parametrized tests take handle function dynamic fixture isolation."""
+
+    pytester.makeconftest(
+        dedent(
+            """\
+            import pytest
+
+            @pytest.fixture(scope="function")
+            def fixture_function():
+                yield []
+
+            @pytest.fixture(scope="module")
+            def fixture_module():
+                yield []
+            """
+        )
+    )
+
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.mark.asyncio_concurrent(group="any")
+            @pytest.mark.parametrize("p", [1, 2, 3])
+            async def test_parametrize_concurrrent(request, p):
+                await asyncio.sleep(p / 10)
+
+                fixture_module = request.getfixturevalue("fixture_module")
+                fixture_function = request.getfixturevalue("fixture_function")
+
+                fixture_module.append(p)
+                fixture_function.append(p)
+
+                assert len(fixture_function) == 1
+                assert len(fixture_module) == p
+            """
+        )
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=3)

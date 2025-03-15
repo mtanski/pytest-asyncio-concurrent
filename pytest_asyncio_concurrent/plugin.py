@@ -122,7 +122,7 @@ def pytest_deselected_update_group(items: Sequence[pytest.Item]) -> None:
 # =========================== # pytest_runtestloop # =========================== #
 
 
-@pytest.hookimpl(specname="pytest_runtestloop", wrapper=True)
+@pytest.hookimpl(specname="pytest_runtestloop", wrapper=True, trylast=True)
 def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generator[None, Any, Any]:
     """
     - Wrapping around pytest_runtestloop, grouping items with same group name together.

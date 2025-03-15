@@ -1,7 +1,7 @@
 import copy
 import sys
+import dataclasses
 from typing import Any, Callable, Dict, List
-import warnings
 
 import pytest
 from _pytest import fixtures
@@ -107,7 +107,7 @@ class AsyncioConcurrentGroupMember(pytest.Function):
 
     @staticmethod
     def promote_from_function(item: pytest.Function) -> "AsyncioConcurrentGroupMember":
-        AsyncioConcurrentGroupMember._rewrite_function_scoped_fixture(item)
+        AsyncioConcurrentGroupMember._refresh_function_scoped_fixture(item)
         member = AsyncioConcurrentGroupMember.from_parent(
             name=item.name,
             parent=item.parent,
@@ -126,55 +126,29 @@ class AsyncioConcurrentGroupMember(pytest.Function):
         self.group.children_finalizer[self].append(fin)
 
     @staticmethod
-    def _rewrite_function_scoped_fixture(item: pytest.Function):
-        # TODO: this function in general utilized some private properties.
-        # research to clean up as much as possible.
+    def _refresh_function_scoped_fixture(item: pytest.Function):
+        # Parametrized tests will use their meta func to gather fixture information
+        # on collection, which means they all share same fixture infomation.
+        # Have to refresh fixtureDef here to get their own their own fixtureDef
 
-        # This is to solve two problem:
-        # 1. Funtion scoped fixture result value got shared in different tests in same group.
-        # 2. And fixture teardown got registered under right test using it.
+        if not hasattr(item, "callspec"):
+            return
 
-        # FixtureDef for each fixture is unique and held in FixtureManger and got injected into
-        # pytest.Item when the Item is constructed, and FixtureDef class is also in charge of
-        # holding finalizers and cache value.
+        fixtureManager: fixtures.FixtureManager = item.config.pluginmanager.get_plugin(
+            "funcmanage"
+        )  # type: ignore
 
-        # Fixture value caching is highly coupled with pytest entire lifecycle, implementing a
-        # thirdparty fixture cache manager will be hard.
-        # The first problem can be solved by shallow copy the fixtureDef, to split the cache_value.
-        # The finalizers are stored in a private list property in fixtureDef, which need to touch
-        # private API anyway.
+        new_name2fixturedefs = {}
+        for name in item._fixtureinfo.name2fixturedefs.keys():
+            if name in item.callspec.params.keys():
+                new_name2fixturedefs[name] = item._fixtureinfo.name2fixturedefs[name]
+            else:
+                new_name2fixturedefs[name] = fixtureManager.getfixturedefs(name, item)  # type: ignore
 
-        # If the private API change, finalizer errors from this fixture but in different
-        # tests in same group will be reported in one function.
-
-        for name, fixturedefs in item._fixtureinfo.name2fixturedefs.items():
-            if hasattr(item, "callspec") and name in item.callspec.params.keys():
-                continue
-
-            if fixturedefs[-1].scope != "function":
-                continue
-
-            try:
-                new_fixdef = fixtures.FixtureDef(
-                    argname=fixturedefs[-1].argname,
-                    scope=fixturedefs[-1].scope,
-                    baseid=fixturedefs[-1].baseid,
-                    config=item.config,
-                    func=fixturedefs[-1].func,
-                    ids=fixturedefs[-1].ids,
-                    params=fixturedefs[-1].params,
-                    _ispytest=True,  # Have to work around.
-                )
-            except Exception:
-                warnings.warn(
-                    f"""
-                    pytest {pytest.__version__} has a different private costructor API
-                    from what this plugin utilize. The teardown error in fixture {name}
-                    might be reported in wrong place.
-                    Please raise an issue.
-                """
-                )
-                new_fixdef = copy.copy(fixturedefs[-1])
-
-            fixturedefs = list(fixturedefs[0:-1]) + [new_fixdef]
-            item._fixtureinfo.name2fixturedefs[name] = fixturedefs
+        try:
+            item._fixtureinfo = dataclasses.replace(
+                item._fixtureinfo, name2fixturedefs=new_name2fixturedefs
+            )
+        except TypeError:
+            item._fixtureinfo = copy.copy(item._fixtureinfo)
+            item._fixtureinfo.name2fixturedefs = new_name2fixturedefs  # type: ignore
