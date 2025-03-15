@@ -96,7 +96,9 @@ def pytest_sessionstart_cache_fixture(session: pytest.Session):
     # If the private API change, finalizer errors from this fixture but in different
     # tests in same group will be reported in one function.
 
-    fixManager: fixtures.FixtureManager = session.config.pluginmanager.get_plugin("funcmanage")  # type: ignore
+    fixManager: fixtures.FixtureManager = (
+        session.config.pluginmanager.get_plugin("funcmanage")  # type: ignore
+    )
     getfixturedefs_original = fixManager.getfixturedefs
 
     @functools.wraps(getfixturedefs_original)
@@ -132,7 +134,7 @@ def _clone_function_fixture(fixtureDef: pytest.FixtureDef) -> pytest.FixtureDef:
     else:
         warnings.warn(
             f"""
-            pytest {pytest.__version__} changed internal property which this plugin relies on. 
+            pytest {pytest.__version__} changed internal property which this plugin relies on.
             The teardown error in fixture {fixtureDef.argname} might be reported in wrong place.
             Please raise an issue.
             """
