@@ -36,24 +36,9 @@ Key Features
   
   * Specifying Async Group to control tests that can run together. 
   * Specifying Timeout to avoid async tests taking forever.
+  * Limitation: Only test functions defined under same direct parent can be put into same group.
 
 * Compatible with ``pytest-asyncio``.
-* Use ``context_aware_fixture`` to handle fixture lifecycle.
-
-Fixture Handling
-----------------
-
-Context Aware Fixture
-*********************
-
-Starting from Version 0.3.*, the limitation that "One async group can only contain tests with same parent node." has been removed.
-
-Having the limitation exist on the first hand because of fixtures are shared within group of tests. Version 0.3.* introduced ``context_aware_fixture`` to solve this problem.
-
-Async Fixture
-*************
-
-All async function fixture are handled automatically.
 
 Installation
 ------------
@@ -130,42 +115,10 @@ Parametrized Tests
     # the parametrized tests below will run concurrently
     @pytest.mark.asyncio_concurrent(group="my_group")
     @pytest.parametrize("p", [0, 1, 2])
-    async def test_parametrize_concurrent(p):
+    async def test_parametrize_concurrent():
         res = await wait_for_something_async()
         assert result.is_valid()
 
-
-Context Aware Fixture
-
-.. code-block:: python
-    
-    @pytest_asyncio_concurrent.context_aware_fixture(scope="function")
-    def my_context_aware_fixture():
-        yield []
-    
-    @pytest.fixture(scope="function")
-    def my_fixture():
-        yield []
-
-    @pytest.mark.asyncio_concurrent(group="my_group")
-    @pytest.parametrize("p", [0, 1, 2])
-    async def test_parametrize_concurrent(my_context_aware_fixture, my_fixture, p):
-        assert len(my_context_aware_fixture) == 0  # Always True
-        assert len(my_fixture) == 0  # Not Always True
-
-        my_context_aware_fixture.append(p)
-        my_fixture.append(p)
-
-
-Async Fixture Handling
-
-.. code-block:: python
-
-    # async fixture are handled automatically
-    @pytest.fixture(scope="module")
-    async def my_module_async_fixture():
-        result = await wait_for_something_async()
-        yield result
 
 Contributing
 ------------

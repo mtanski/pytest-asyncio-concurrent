@@ -28,6 +28,7 @@ from .grouping import (
     AsyncioConcurrentGroup,
     AsyncioConcurrentGroupMember,
     PytestAsyncioConcurrentInvalidMarkWarning,
+    PytestAsyncioConcurrentGroupingWarning,
 )
 
 if sys.version_info < (3, 11):
@@ -121,7 +122,7 @@ def pytest_deselected_update_group(items: Sequence[pytest.Item]) -> None:
 # =========================== # pytest_runtestloop # =========================== #
 
 
-@pytest.hookimpl(specname="pytest_runtestloop", wrapper=True)
+@pytest.hookimpl(specname="pytest_runtestloop", wrapper=True, trylast=True)
 def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generator[None, Any, Any]:
     """
     - Wrapping around pytest_runtestloop, grouping items with same group name together.
@@ -174,6 +175,19 @@ def pytest_runtest_protocol_async_group(
     - pytest_runtest_teardown_async_group (reporting under last tests)
     - pytest_runtest_logfinish (batch)
     """
+
+    if not group.children_have_same_parent:
+        for child in group.children:
+            child.add_marker("skip")
+
+        warnings.warn(
+            PytestAsyncioConcurrentGroupingWarning(
+                f"""
+                Asyncio Concurrent Group [{group.name}] has children from different parents,
+                skipping all of it's children.
+                """
+            )
+        )
 
     item_passed_setup: List[AsyncioConcurrentGroupMember] = []
     loop = asyncio.get_event_loop()
