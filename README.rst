@@ -36,6 +36,7 @@ Key Features
   
   * Specifying Async Group to control tests that can run together. 
   * Specifying Timeout to avoid async tests taking forever.
+  * Limitation: Only test functions defined under same direct parent can be put into same group.
 
 * Compatible with ``pytest-asyncio``.
 
