@@ -96,9 +96,9 @@ def pytest_sessionstart_cache_fixture(session: pytest.Session):
     # If the private API change, finalizer errors from this fixture but in different
     # tests in same group will be reported in one function.
 
-    fixManager: fixtures.FixtureManager = (
-        session.config.pluginmanager.get_plugin("funcmanage")  # type: ignore
-    )
+    fixManager: fixtures.FixtureManager = session.config.pluginmanager.get_plugin(
+        "funcmanage"
+    )  # type: ignore
     getfixturedefs_original = fixManager.getfixturedefs
 
     @functools.wraps(getfixturedefs_original)

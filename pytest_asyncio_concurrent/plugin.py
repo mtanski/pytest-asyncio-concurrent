@@ -1,4 +1,5 @@
 import asyncio
+import bdb
 import functools
 import inspect
 import uuid
@@ -206,6 +207,9 @@ def pytest_runtest_protocol_async_group(
 
     for childFunc, callinfo in zip(item_passed_setup, callinfos):
         report = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=callinfo)
+        if _check_interactive_exception(call=callinfo, report=report):
+            childFunc.ihook.pytest_exception_interact(node=childFunc, call=callinfo, report=report)
+
         childFunc.ihook.pytest_runtest_logreport(report=report)
 
     for childFunc in group.children:
@@ -445,6 +449,9 @@ def _call_and_report(
         and not hasattr(report, "wasxfail")
     ):
         item.ihook.pytest_exception_interact(node=item, call=call, report=report)
+
+    if _check_interactive_exception(call, report):
+        item.ihook.pytest_exception_interact(node=item, call=call, report=report)
     return report
 
 
@@ -468,3 +475,19 @@ def hook_wrapper_entered(
             )
 
         yield
+
+
+# copied from _pytest/runner
+def _check_interactive_exception(call: pytest.CallInfo[object], report: pytest.TestReport) -> bool:
+    """Check whether the call raised an exception that should be reported as
+    interactive."""
+    if call.excinfo is None:
+        # Didn't raise.
+        return False
+    if hasattr(report, "wasxfail"):
+        # Exception was expected.
+        return False
+    if isinstance(call.excinfo.value, (outcomes.Skipped, bdb.BdbQuit)):
+        # Special control flow exception.
+        return False
+    return True
