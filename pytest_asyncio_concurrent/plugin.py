@@ -208,9 +208,7 @@ def pytest_runtest_protocol_async_group(
     for childFunc, callinfo in zip(item_passed_setup, callinfos):
         report = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=callinfo)
         if _check_interactive_exception(call=callinfo, report=report):
-            childFunc.ihook.pytest_exception_interact(
-                node=childFunc, call=callinfo, report=report
-            )
+            childFunc.ihook.pytest_exception_interact(node=childFunc, call=callinfo, report=report)
 
         childFunc.ihook.pytest_runtest_logreport(report=report)
 
@@ -451,7 +449,7 @@ def _call_and_report(
         and not hasattr(report, "wasxfail")
     ):
         item.ihook.pytest_exception_interact(node=item, call=call, report=report)
-        
+
     if _check_interactive_exception(call, report):
         item.ihook.pytest_exception_interact(node=item, call=call, report=report)
     return report

@@ -143,9 +143,9 @@ class AsyncioConcurrentGroupMember(pytest.Function):
             if name in item.callspec.params.keys():
                 new_name2fixturedefs[name] = item._fixtureinfo.name2fixturedefs[name]
             else:
-                new_name2fixturedefs[name] = (
-                    fixtureManager.getfixturedefs(name, item)  # type: ignore
-                )
+                new_name2fixturedefs[name] = fixtureManager.getfixturedefs(
+                    name, item
+                )  # type: ignore
 
         try:
             item._fixtureinfo = dataclasses.replace(
