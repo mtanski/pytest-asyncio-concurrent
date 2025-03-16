@@ -286,3 +286,29 @@ def test_timeout_concurrent(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
     result.assert_outcomes(failed=2)
+
+
+def test_error_pdb_interaction(pytester: pytest.Pytester):
+    """make sure tests with pdb enabled will have pdb interact on error"""
+    
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+
+            @pytest.mark.parametrize("p", [0, 1, 2])
+            @pytest.mark.asyncio_concurrent(group="any")
+            async def test_pdb(p):
+                if p == 1:
+                    raise Exception()
+                
+            """
+        )
+    )
+    
+    result = pytester.runpytest("--pdb")
+    result.stdout.fnmatch_lines(["*Pdb*"])
+    print(result.stdout.lines)
+
+    result.assert_outcomes(failed=1, passed=2)
