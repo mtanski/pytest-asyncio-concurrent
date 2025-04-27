@@ -133,16 +133,17 @@ def pytest_runtestloop_handle_async_by_group(session: pytest.Session) -> Generat
     """
     items = session.items
     ihook = session.ihook
-    groups = list(session.config.stash[asyncio_concurrent_group_key].values())
 
     asyncio_concurrent_tests = [
         item for item in items if isinstance(item, AsyncioConcurrentGroupMember)
     ]
-    assert sum([len(group.children) for group in groups]) == len(asyncio_concurrent_tests)
+    groups: List[AsyncioConcurrentGroup] = []
+    for async_test in asyncio_concurrent_tests:
+        if async_test.group not in groups:
+            groups.append(async_test.group)
+        items.remove(async_test)
 
-    for group in groups:
-        for item in group.children:
-            items.remove(item)
+    assert sum([len(group.children) for group in groups]) == len(asyncio_concurrent_tests)
 
     result = yield
 
