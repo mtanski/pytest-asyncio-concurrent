@@ -56,6 +56,7 @@ jobs:
         with:
           name: pytest-asyncio-concurrent ${{ steps.bump.outputs.current-version }}
           prerelease: ${{ inputs.release_type }} == 'pre'
+          generateReleaseNotes: true
           tag: ${{ steps.bump.outputs.current-version }}
           artifacts: dist/*
           token: ${{ secrets.GH_TOKEN }}
