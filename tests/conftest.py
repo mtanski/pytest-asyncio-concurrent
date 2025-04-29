@@ -9,8 +9,7 @@ def pytester_add_ini(pytester: pytest.Pytester) -> Generator[None, None, None]:
     pytester.makeini(
         """
         [pytest]
-        asyncio_default_fixture_loop_scope=function
-        addopts = -p no:sugar
+        addopts = -p no:asyncio
         """
     )
     yield
