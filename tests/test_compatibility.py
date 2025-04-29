@@ -21,6 +21,14 @@ def test_compatibility_with_pytest_asyncio(pytester: pytest.Pytester):
             """
         )
     )
+    # overwrite the conftest
+    pytester.makeini(
+        """
+        [pytest]
+        asyncio_default_fixture_loop_scope=function
+        addopts = -p no:sugar
+        """
+    )
 
     result = pytester.runpytest()
     result.assert_outcomes(passed=2)

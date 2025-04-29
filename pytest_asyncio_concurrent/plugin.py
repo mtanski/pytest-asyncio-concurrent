@@ -2,7 +2,6 @@ import asyncio
 import bdb
 import functools
 import inspect
-import uuid
 import warnings
 import sys
 import contextlib
@@ -18,6 +17,7 @@ from typing import (
     Dict,
     Sequence,
     Union,
+    cast,
 )
 
 import pluggy
@@ -39,6 +39,22 @@ if sys.version_info < (3, 11):
 # =========================== # Config # =========================== #
 
 asyncio_concurrent_group_key = pytest.StashKey[Dict[str, AsyncioConcurrentGroup]]()
+GroupStrategy = Literal["self", "parent"]
+
+
+def pytest_addoption(parser: pytest.Parser):
+    parser.addoption(
+        "--default-group-strategy",
+        choices=["self", "parent"],
+        help="asyncio-concurrent: default grouping strategy, \
+            please refer to documentation for more info.",
+    )
+    parser.addini(
+        "default_group_strategy",
+        "asyncio: asyncio-concurrent: default grouping strategy, \
+            please refer to documentation for more info.",
+        default="self",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -389,11 +405,30 @@ def _get_asyncio_concurrent_mark(item: pytest.Item) -> Optional[pytest.Mark]:
     return item.get_closest_marker("asyncio_concurrent")
 
 
-def _get_asyncio_concurrent_group(item: pytest.Item) -> str:
+def _get_asyncio_concurrent_group(item: AsyncioConcurrentGroupMember) -> str:
     marker = item.get_closest_marker("asyncio_concurrent")
     assert marker is not None
 
-    return marker.kwargs.get("group", f"anonymous_[{uuid.uuid4()}]")
+    default_group_name = (
+        f"self_[{item.nodeid}]"
+        if _get_group_strategy(item.config) == "self"
+        else f"parent_[{item.parent.nodeid}]"  # type: ignore
+    )
+
+    return marker.kwargs.get("group", default_group_name)
+
+
+@functools.lru_cache(maxsize=1)
+def _get_group_strategy(config: pytest.Config) -> GroupStrategy:
+    strategy = (
+        config.getoption("--default-group-strategy")
+        or config.getini("default_group_strategy")
+        or "self"
+    ).lower()
+    assert (
+        strategy == "self" or strategy == "parent"
+    ), "group_strategy should be either self or parent"
+    return cast(GroupStrategy, strategy)
 
 
 # referencing CallInfo.from_call
