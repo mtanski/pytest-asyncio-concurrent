@@ -5,8 +5,8 @@ import pytest
 def test_parent_group_strategy__cli_seperate_file(pytester: pytest.Pytester):
     """Tests go under closest parent under group strategy"""
 
-    pytester.makepyfile(testA=
-        dedent(
+    pytester.makepyfile(
+        testA=dedent(
             """\
             import asyncio
             import pytest
@@ -22,8 +22,8 @@ def test_parent_group_strategy__cli_seperate_file(pytester: pytest.Pytester):
         )
     )
 
-    pytester.makepyfile(testB=
-        dedent(
+    pytester.makepyfile(
+        testB=dedent(
             """\
             import asyncio
             import pytest
@@ -48,8 +48,8 @@ def test_parent_group_strategy__cli_seperate_file(pytester: pytest.Pytester):
 def test_parent_group_strategy__cli_file_and_class(pytester: pytest.Pytester):
     """Tests go under closest parent under group strategy"""
 
-    pytester.makepyfile(testA=
-        dedent(
+    pytester.makepyfile(
+        testA=dedent(
             """\
             import asyncio
             import pytest
@@ -65,8 +65,8 @@ def test_parent_group_strategy__cli_file_and_class(pytester: pytest.Pytester):
         )
     )
 
-    pytester.makepyfile(testB=
-        dedent(
+    pytester.makepyfile(
+        testB=dedent(
             """\
             import asyncio
             import pytest
@@ -78,7 +78,7 @@ def test_parent_group_strategy__cli_file_and_class(pytester: pytest.Pytester):
             @pytest.mark.asyncio_concurrent
             async def test_group_B():
                 await asyncio.sleep(0.2)
-            
+
             class TestDummyClass:
                 @pytest.mark.asyncio_concurrent
                 async def test_group_A(self):
@@ -100,8 +100,8 @@ def test_parent_group_strategy__cli_file_and_class(pytester: pytest.Pytester):
 def test_parent_group_strategy__ini_seperate_file(pytester: pytest.Pytester):
     """Tests go under closest parent under group strategy"""
 
-    pytester.makepyfile(testA=
-        dedent(
+    pytester.makepyfile(
+        testA=dedent(
             """\
             import asyncio
             import pytest
@@ -117,8 +117,8 @@ def test_parent_group_strategy__ini_seperate_file(pytester: pytest.Pytester):
         )
     )
 
-    pytester.makepyfile(testB=
-        dedent(
+    pytester.makepyfile(
+        testB=dedent(
             """\
             import asyncio
             import pytest
@@ -133,10 +133,10 @@ def test_parent_group_strategy__ini_seperate_file(pytester: pytest.Pytester):
             """
         )
     )
-    
+
     pytester.makeini(
-        dedent(   
-        """\
+        dedent(
+            """\
         [pytest]
         default_group_strategy = parent
         addopts = -p no:asyncio
@@ -148,7 +148,7 @@ def test_parent_group_strategy__ini_seperate_file(pytester: pytest.Pytester):
 
     assert result.duration < 0.6
     result.assert_outcomes(passed=4)
-    
+
 
 def test_parent_group_strategy__cli_invalid(pytester: pytest.Pytester):
     """Tests go under closest parent under group strategy"""
@@ -173,7 +173,7 @@ def test_parent_group_strategy__cli_invalid(pytester: pytest.Pytester):
     result = pytester.runpytest("--default-group-strategy=class")
 
     assert len(result.stderr.lines) > 0
-    
+
 
 def test_parent_group_strategy__ini_invalid(pytester: pytest.Pytester):
     """Tests go under closest parent under group strategy"""
@@ -196,14 +196,14 @@ def test_parent_group_strategy__ini_invalid(pytester: pytest.Pytester):
     )
 
     pytester.makeini(
-        dedent(   
-        """\
+        dedent(
+            """\
         [pytest]
         default_group_strategy = class
         addopts = -p no:sugar no:asyncio
         """
         )
     )
-    
+
     result = pytester.runpytest()
     assert len(result.stderr.lines) > 0

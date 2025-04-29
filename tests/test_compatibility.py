@@ -21,7 +21,7 @@ def test_compatibility_with_pytest_asyncio(pytester: pytest.Pytester):
             """
         )
     )
-    # overwrite the conftest 
+    # overwrite the conftest
     pytester.makeini(
         """
         [pytest]
