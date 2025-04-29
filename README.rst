@@ -45,13 +45,13 @@ Key Concept: Async Group
 
 The plugin control tests concurrency by putting them into different groups.
 
-* Limitation: Each group can **Only** contain tests under same direct parent. For example, class methods within same class, or function within same file.
+* Limitation: Each group can **only** contain tests under **same direct parent**. For example, class methods within same class, or functions within same file.
 * Explicitly specify group by providing ``group`` parameter to ``asyncio_concurrent`` mark. 
 
     * All tests marked with same group name will be executed together.
     * All tests will be skipped if the ``Same Parent`` rule got violated.
 
-* Use default grouping strategy. The plugin accept ``--default-group-strategy`` cli parameter, or ``default_group_strategy`` in ini or toml file. Possible value: self, parent.
+* Use default grouping strategy. The plugin accept ``--default-group-strategy`` cli parameter, or ``default_group_strategy`` in ini or toml file. Possible value: ``self``, ``parent``.
     
     * **self**\(default\): Each test will be executed by itself if no group provided.
     * **parent**: Tests will grouped by their parent node. For example, all method within same class will be grouped together.
