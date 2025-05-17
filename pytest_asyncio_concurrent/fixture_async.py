@@ -3,7 +3,6 @@ import inspect
 import asyncio
 import functools
 
-import sys
 from typing import Any, Dict, Optional, Sequence
 import warnings
 
@@ -106,7 +105,6 @@ def pytest_sessionstart_cache_fixture(session: pytest.Session):
         argname: str,
         node: nodes.Node,
     ) -> Optional[Sequence[pytest.FixtureDef[Any]]]:
-        print(f"{argname} {node}", file=sys.stderr)
         if fixture_cache_key not in node.stash:
             node.stash[fixture_cache_key] = {}
 
