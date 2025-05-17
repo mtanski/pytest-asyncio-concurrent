@@ -3,7 +3,6 @@ import inspect
 import asyncio
 import functools
 
-import sys
 from typing import Any, Dict, Optional, Sequence
 import warnings
 
