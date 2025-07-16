@@ -31,7 +31,7 @@ def _wrap_asyncgen_fixture(fixturedef: pytest.FixtureDef) -> None:
 
     @functools.wraps(fixtureFunc)
     def _asyncgen_fixture_wrapper(**kwargs: Any):
-        event_loop = asyncio.new_event_loop()
+        event_loop = asyncio.get_event_loop()
         gen_obj = fixtureFunc(**kwargs)
 
         async def setup():
