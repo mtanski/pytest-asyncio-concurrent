@@ -16,6 +16,7 @@ from typing import (
     Coroutine,
     Dict,
     Sequence,
+    Tuple,
     Union,
     cast,
 )
@@ -207,47 +208,45 @@ def pytest_runtest_protocol_async_group(
             )
         )
 
-    item_passed_setup: List[AsyncioConcurrentGroupMember] = []
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    for childFunc in group.children:
-        childFunc.ihook.pytest_runtest_logstart(
-            nodeid=childFunc.nodeid, location=childFunc.location
-        )
+    async def run_test_protocol(item: AsyncioConcurrentGroupMember):
+        item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)
+        setup_report = _call_and_report(_setup_child(item), item, "setup")
+        if setup_report.passed:
+            _, callinfo = await _call_runtest_async(item)
+            report = item.ihook.pytest_runtest_makereport(item=item, call=callinfo)
+            if _check_interactive_exception(call=callinfo, report=report):
+                item.ihook.pytest_exception_interact(node=item, call=callinfo, report=report)
+            item.ihook.pytest_runtest_logreport(report=report)
 
-        report = _call_and_report(_setup_child(childFunc), childFunc, "setup")
-        if report.passed:
-            item_passed_setup.append(childFunc)
+        _call_and_report(_teardown_child(item, nextgroup=nextgroup), item, "teardown")
+        item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
 
-    coros = [_call_runtest_async(childFunc) for childFunc in item_passed_setup]
-    callinfos = loop.run_until_complete(asyncio.gather(*coros))
+    async def run_all_protocols():
+        tasks = [asyncio.create_task(run_test_protocol(child)) for child in group.children]
+        if tasks:
+            await asyncio.gather(*tasks)
 
-    for childFunc, callinfo in zip(item_passed_setup, callinfos):
-        report = childFunc.ihook.pytest_runtest_makereport(item=childFunc, call=callinfo)
-        if _check_interactive_exception(call=callinfo, report=report):
-            childFunc.ihook.pytest_exception_interact(node=childFunc, call=callinfo, report=report)
-
-        childFunc.ihook.pytest_runtest_logreport(report=report)
-
-    for childFunc in group.children:
-        _call_and_report(_teardown_child(childFunc, nextgroup=nextgroup), childFunc, "teardown")
-
-        childFunc.ihook.pytest_runtest_logfinish(
-            nodeid=childFunc.nodeid, location=childFunc.location
-        )
+    if group.children:
+        loop.run_until_complete(run_all_protocols())
 
     return True
 
 
-async def _call_runtest_async(item: AsyncioConcurrentGroupMember) -> pytest.CallInfo:
+async def _call_runtest_async(
+    item: AsyncioConcurrentGroupMember,
+) -> Tuple[AsyncioConcurrentGroupMember, pytest.CallInfo]:
     mark = _get_asyncio_concurrent_mark(item)
     assert mark
     timeout = mark.kwargs.get("timeout")
 
-    return await _async_callinfo_from_call(
+    callinfo = await _async_callinfo_from_call(
         functools.partial(item.ihook.pytest_runtest_call_async, item=item),  # type: ignore
         timeout=timeout,
     )
+    return item, callinfo
 
 
 def _setup_child(item: AsyncioConcurrentGroupMember) -> Callable[[], None]:

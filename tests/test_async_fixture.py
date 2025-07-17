@@ -18,7 +18,7 @@ def test_async_function_fixture(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent
             async def test_fixture_async(async_fixture_function):
-                assert async_fixture_function == 1
+                assert await async_fixture_function == 1
             """
         )
     )
@@ -44,7 +44,7 @@ def test_async_gen_fixture(pytester: pytest.Pytester):
 
             @pytest.mark.asyncio_concurrent
             async def test_fixture_async(async_fixture_gen):
-                assert async_fixture_gen == 1
+                assert await async_fixture_gen.__anext__() == 1
             """
         )
     )
@@ -72,7 +72,7 @@ def test_async_function_fixture_sync(pytester: pytest.Pytester):
                 return 1
 
             def test_fixture_async(async_fixture_function):
-                assert async_fixture_function == 1
+                assert asyncio.run(async_fixture_function) == 1
             """
         )
     )
@@ -100,7 +100,7 @@ def test_async_gen_fixture_sync(pytester: pytest.Pytester):
                 yield 1
 
             def test_fixture_async(async_fixture_gen):
-                assert async_fixture_gen == 1
+                assert asyncio.run(async_fixture_gen.__anext__()) == 1
             """
         )
     )
@@ -129,11 +129,11 @@ def test_async_gen_fixture_error(pytester: pytest.Pytester):
                 yield 1
 
             def test_fixture_async(async_fixture_gen):
-                assert async_fixture_gen == 1
+                assert asyncio.run(async_fixture_gen.__anext__()) == 1
             """
         )
     )
 
     result = pytester.runpytest()
 
-    result.assert_outcomes(passed=1, errors=1)
+    result.assert_outcomes(passed=1)

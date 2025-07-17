@@ -1,6 +1,5 @@
 import copy
 import inspect
-import asyncio
 import functools
 
 from typing import Any, Dict, Optional, Sequence
@@ -27,32 +26,13 @@ def _wrap_async_fixture(fixturedef: pytest.FixtureDef) -> None:
 
 
 def _wrap_asyncgen_fixture(fixturedef: pytest.FixtureDef) -> None:
-    fixtureFunc = fixturedef.func
+    fixture_func = fixturedef.func
 
-    @functools.wraps(fixtureFunc)
-    def _asyncgen_fixture_wrapper(**kwargs: Any):
-        event_loop = asyncio.get_event_loop()
-        gen_obj = fixtureFunc(**kwargs)
+    @functools.wraps(fixture_func)
+    def _asyncgen_fixture_wrapper(*args, **kwargs):
+        return fixture_func(*args, **kwargs)
 
-        async def setup():
-            res = await gen_obj.__anext__()  # type: ignore[union-attr]
-            return res
-
-        async def teardown() -> None:
-            try:
-                await gen_obj.__anext__()  # type: ignore[union-attr]
-            except StopAsyncIteration:
-                pass
-            else:
-                msg = "Async generator fixture didn't stop."
-                msg += "Yield only once."
-                raise ValueError(msg)
-
-        result = event_loop.run_until_complete(setup())
-        yield result
-        event_loop.run_until_complete(teardown())
-
-    fixturedef.func = _asyncgen_fixture_wrapper  # type: ignore[misc]
+    fixturedef.func = _asyncgen_fixture_wrapper
 
 
 def _wrap_asyncfunc_fixture(fixturedef: pytest.FixtureDef) -> None:
@@ -60,15 +40,9 @@ def _wrap_asyncfunc_fixture(fixturedef: pytest.FixtureDef) -> None:
 
     @functools.wraps(fixtureFunc)
     def _async_fixture_wrapper(**kwargs: Dict[str, Any]):
-        event_loop = asyncio.get_event_loop()
+        return fixtureFunc(**kwargs)
 
-        async def setup():
-            res = await fixtureFunc(**kwargs)
-            return res
-
-        return event_loop.run_until_complete(setup())
-
-    fixturedef.func = _async_fixture_wrapper  # type: ignore[misc]
+    fixturedef.func = _async_fixture_wrapper
 
 
 fixture_cache_key = pytest.StashKey[Dict[str, Optional[Sequence[pytest.FixtureDef[Any]]]]]()

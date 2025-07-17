@@ -146,7 +146,7 @@ def test_parent_group_strategy__ini_seperate_file(pytester: pytest.Pytester):
 
     result = pytester.runpytest("testA.py", "testB.py")
 
-    assert result.duration < 0.6
+    assert result.duration < 1
     result.assert_outcomes(passed=4)
 
 

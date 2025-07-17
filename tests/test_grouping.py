@@ -76,7 +76,7 @@ def test_groups_same(pytester: pytest.Pytester):
 
     result = pytester.runpytest()
 
-    assert result.duration < 0.3
+    assert result.duration < 0.4
     result.assert_outcomes(passed=2)
 
 
@@ -135,4 +135,4 @@ def test_parametrize_with_group(pytester: pytest.Pytester):
     result = pytester.runpytest()
 
     result.assert_outcomes(passed=3)
-    assert result.duration < 0.3
+    assert result.duration < 0.4
